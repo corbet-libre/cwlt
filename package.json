@@ -1,0 +1,18 @@
+{
+  "name": "@corbet-labs/cwlt",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "LGPL-3.0-only WITH LGPL-3.0-linking-exception",
+  "exports": {
+    "./extensions": "./runtime/extensions.mjs",
+    "./hashes": "./runtime/hashes.mjs"
+  },
+  "dependencies": {
+    "@corbet-labs/czkp": "github:corbet-foss/czkp#82c1618e8cff8636fd71d71cd77f57acaa1fda94"
+  },
+  "peerDependencies": {
+    "@aztec/bb.js": "5.0.0",
+    "@noir-lang/noir_js": "1.0.0-beta.26"
+  }
+}

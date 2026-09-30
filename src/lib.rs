@@ -1,5 +1,18 @@
 //! Zero-knowledge accounting wallet (holder).
 //!
-//! Placeholder crate. The interface is not designed yet; see
-//! the README for the intended scope.
+//! Private member-side witness planning. Every result still needs a real proof
+//! of the independently authenticated policy circuit before an issuer accepts it.
 #![forbid(unsafe_code)]
+pub mod witness;
+
+/// Prepare one private transition as JSON for the Noir/Barretenberg host adapter.
+/// Neither inputs nor outputs may be logged, sent to an issuer, or stored unencrypted.
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen)]
+pub fn prepare(input: &str) -> Result<String, String> {
+    if input.len() > 8192 {
+        return Err("witness input bound".into());
+    }
+    let request: witness::Request = serde_json::from_str(input).map_err(|_| "invalid witness")?;
+    let result = request.prepare().map_err(|_| "invalid transition")?;
+    serde_json::to_string(&result).map_err(|_| "witness encoding".into())
+}
