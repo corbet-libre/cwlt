@@ -4,8 +4,10 @@
 
 `cwlt` is the holder in the issuer-verifier-holder schema: it keeps the member's openings and creates proofs for `cblc` and other gates. Any client speaking the protocol is a holder; `cmsg` embeds it, other products embed it in their own client.
 
-Status: extension witness construction under validation. Production activation
-belongs to the independently pinned verifier and real-proof acceptance tests.
+Extension witnesses pass native/wasm planner tests and cblc's
+[real-proof acceptance suite](https://github.com/corbet-libs/cblc/actions/runs/36743686840).
+Activation requires an independently pinned verifier and a real genesis proof;
+no production deployment or registry release is implied.
 
 The Rust core prepares checked private balance/counter transitions on native and
 wasm32. The JavaScript adapter builds authenticated map paths and Noir witnesses
@@ -18,6 +20,19 @@ inbox-consumption, change and quorum-record candidates. It takes a `transition`
 callback wrapping the native or wasm Rust `prepare` function. Callers keep old
 openings until the issuer's signed acceptance is checked and saved atomically.
 Raw witness objects and Rust JSON inputs/outputs must stay on member devices.
+
+For an authorized outcome, retain its accepted opening and issuer certificate
+until a deposit proof is recoverable or the deposit is accepted. A later account
+update clears the current authorization field but cannot revoke a historically
+accepted certificate. Keep private snapshots only on the member's devices.
+
+To drain an inbox, call `consume` in the supplied chain order at one common proof
+time, then append the intended normal action (or `reblind`). Prove every candidate
+and submit the complete bundle to cblc. Intermediate candidates retain the old
+issuer version and must never be adopted as independently accepted updates.
+Adopt the final opening only after verifying the whole bundle's signed acceptance.
+Established punishment can arrive before its earlier Answer deposit; both orders
+produce the same burn and record, and a late Answer cannot refund punishment.
 
 Cryptographic library selection: reuse Noir 1.0.0-beta.26 and Barretenberg 5.0.0
 through `czkp`; no local hash permutation, signature scheme or prover. All security
