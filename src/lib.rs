@@ -5,6 +5,14 @@
 #![forbid(unsafe_code)]
 pub mod witness;
 
+/// Nonexporting global-passport custody over the existing Pseudonyms engine.
+#[cfg(feature = "passport")]
+pub mod passport;
+
+/// Wallet-owned global passport with no secret or opening accessors.
+#[cfg(feature = "passport")]
+pub use passport::{Holder as PassportHolder, PassportSession};
+
 /// Prepare one private transition as JSON for the Noir/Barretenberg host adapter.
 /// Neither inputs nor outputs may be logged, sent to an issuer, or stored unencrypted.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen)]

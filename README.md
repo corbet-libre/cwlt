@@ -39,6 +39,31 @@ through `czkp`; no local hash permutation, signature scheme or prover. All secur
 predicates must also be checked by the pinned circuits. Client matching and key
 release must honor the private block; a proof cannot force a modified client.
 
+## Scope
+
+Wallet is the device-side holder under Vault, used by Foyer and Inbox. It keeps
+private openings, reservations, outcome evidence and accepted successors, creates
+proofs, and checks counterpart proofs. It adopts an account successor only after
+verified signed acceptance and the shared durable checkpoint. Unknown outcomes
+reconcile the original request; pending obligations are consumed before other work.
+
+Keys derives the global passport seed; Wallet holds the passport and creates
+presentations through Pseudonyms. The optional `passport` feature exposes
+`passport::Holder`, which consumes and wipes that dedicated seed and retains the
+existing `cpsd` opaque engine. Its public outputs are issuance messages, signed
+attributes, community pseudonyms and origin-authenticated presentations. It
+exports no seed, pending opening or passport. Operations are available through
+`Holder::with_session` and its private borrowed `PassportSession`; the session
+cannot escape the callback, and no movable engine borrow is exposed. The host must freshly authorize
+operations and drop custody on lock; Keys owns derivation and device lineage.
+
+Wallet never runs on a server, reveals a counterpart or opening, treats planning
+as proof, or resets lifetime genesis after rotation. Circuit and policy material
+arrive as authenticated data. Welcome/introduction grants require the actual
+accounting relation and its weekly cap/headroom; seats remain disabled. The
+opaque extension-account engine and atomic Vault journal are not implemented by
+the passport wrapper. G2 local currentness and G5 private settlement remain open.
+
 ## Boundaries
 
 What it does:

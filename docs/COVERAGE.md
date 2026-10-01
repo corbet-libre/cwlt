@@ -29,3 +29,10 @@ The same invariant is asserted over the native and wasm state partitions and
 independently constrained by Noir. JSON Plan contains only primitive integers
 and booleans, so encoding through serde_json::Value is total. No production
 code is excluded from the report.
+
+The source gate cross-checks raw JSON counters, LCOV locations and LLVM's
+annotated source inventory from the same execution. Every emitted source line
+and branch must be covered, with no exclusions; raw instantiated counters remain
+retained. A missing file, line, branch, ambiguous single-file report or inconsistent
+summary refuses the gate. Committed lock policy is checked before refreshing
+one snapshot. The single active CI group retains pending successors.

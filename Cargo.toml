@@ -17,7 +17,12 @@ crate-type = ["rlib", "cdylib"]
 unsafe_code = "forbid"
 missing_docs = "warn"
 
+[features]
+default = []
+passport = ["dep:cpsd"]
+
 [dependencies]
+cpsd = { git = "https://github.com/corbet-foss/cpsd", branch = "main", default-features = false, optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -26,3 +31,11 @@ wasm-bindgen = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[dev-dependencies]
+csgn = { git = "https://github.com/corbet-foss/csgn", branch = "main", default-features = false, features = ["volatile-signer"] }
+
+# Pairing arithmetic uses upstream optimized implementations. Our own tests
+# retain ordinary source instrumentation and no coverage exclusions.
+[profile.dev.package."*"]
+opt-level = 3
