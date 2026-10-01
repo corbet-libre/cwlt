@@ -9,7 +9,7 @@
     "./hashes": "./runtime/hashes.mjs"
   },
   "dependencies": {
-    "@corbet-labs/czkp": "github:corbet-foss/czkp#82c1618e8cff8636fd71d71cd77f57acaa1fda94"
+    "@corbet-labs/czkp": "github:corbet-foss/czkp#e1782da1f7193a26ca0aea23137784896b780c03"
   },
   "peerDependencies": {
     "@aztec/bb.js": "5.0.0",
