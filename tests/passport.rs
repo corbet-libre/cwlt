@@ -48,7 +48,8 @@ fn opaque_issuance_and_refused_renewal_preserve_the_verified_identity() {
     holder.with_session(|mut holder| {
         let attributes = PassportAttributes::new(2000, 7).with_gate(gate.clone(), 2000);
         let request =
-            PresentationRequest::for_epoch(&mut rng, community.clone(), 7, [gate], 1000, 2000).unwrap();
+            PresentationRequest::for_epoch(&mut rng, community.clone(), 7, [gate], 1000, 2000)
+                .unwrap();
         let mut signer = csgn::Signer::new(
             "cmty:test",
             csgn::SecretKey::from_seed(&mut [4; 32]),
