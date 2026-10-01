@@ -9,10 +9,10 @@
     "./hashes": "./runtime/hashes.mjs"
   },
   "dependencies": {
-    "@corbet-labs/czkp": "github:corbet-foss/czkp#e1782da1f7193a26ca0aea23137784896b780c03"
+    "@corbet-labs/czkp": "github:corbet-foss/czkp#main"
   },
   "peerDependencies": {
-    "@aztec/bb.js": "5.0.0",
-    "@noir-lang/noir_js": "1.0.0-beta.26"
+    "@aztec/bb.js": "^5.0.0",
+    "@noir-lang/noir_js": "^1.0.0-beta.26"
   }
 }

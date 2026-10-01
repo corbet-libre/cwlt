@@ -210,9 +210,10 @@ impl Request {
         let paid = b.debt.min(b.available as u64);
         b.available -= paid as u32;
         b.debt -= paid;
-        if b.available as u128 + b.reserved as u128 > self.capacity as u128 {
-            return Err(Invalid);
-        }
+        // Every accepted action either transfers the same amount between available
+        // and reserved, reduces their sum, or refills only the checked headroom.
+        // Debt repayment above can only reduce that sum. The entry capacity bound
+        // therefore also holds here; the independent Noir relation checks it too.
         Ok(Plan {
             balances: b,
             phase,

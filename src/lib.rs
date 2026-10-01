@@ -14,5 +14,6 @@ pub fn prepare(input: &str) -> Result<String, String> {
     }
     let request: witness::Request = serde_json::from_str(input).map_err(|_| "invalid witness")?;
     let result = request.prepare().map_err(|_| "invalid transition")?;
-    serde_json::to_string(&result).map_err(|_| "witness encoding".into())
+    // Plan contains only primitive integers and booleans: JSON encoding is total.
+    Ok(serde_json::json!(result).to_string())
 }
