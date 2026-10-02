@@ -41,28 +41,25 @@ release must honor the private block; a proof cannot force a modified client.
 
 ## Scope
 
-Wallet is the device-side holder under Vault, used by Foyer and Inbox. It keeps
-private openings, reservations, outcome evidence and accepted successors, creates
-proofs, and checks counterpart proofs. It adopts an account successor only after
-verified signed acceptance and the shared durable checkpoint. Unknown outcomes
-reconcile the original request; pending obligations are consumed before other work.
+### Purpose
 
-Keys derives the global passport seed; Wallet holds the passport and creates
-presentations through Pseudonyms. The optional `passport` feature exposes
-`passport::Holder`, which consumes and wipes that dedicated seed and retains the
-existing `cpsd` opaque engine. Its public outputs are issuance messages, signed
-attributes, community pseudonyms and origin-authenticated presentations. It
-exports no seed, pending opening or passport. Operations are available through
-`Holder::with_session` and its private borrowed `PassportSession`; the session
-cannot escape the callback, and no movable engine borrow is exposed. The host must freshly authorize
-operations and drop custody on lock; Keys owns derivation and device lineage.
+`cwlt` is the holder in the issuer-verifier-holder schema: it keeps the member's openings on the device and creates the proofs that `cblc` and other gates check.
 
-Wallet never runs on a server, reveals a counterpart or opening, treats planning
-as proof, or resets lifetime genesis after rotation. Circuit and policy material
-arrive as authenticated data. Welcome/introduction grants require the actual
-accounting relation and its weekly cap/headroom; seats remain disabled. The
-opaque extension-account engine and atomic Vault journal are not implemented by
-the passport wrapper. G2 local currentness and G5 private settlement remain open.
+### Owns
+
+Keeps openings, proof material, reservations, outcomes, changes, records, and accepted successors, and adopts a successor only after verified signed acceptance. Builds witnesses for genesis, reservation, activation, settlement, punishment, inbox consumption, change, and quorum records. Handles the holder side of welcome and introduction grants with seats disabled, and checks counterpart proofs on the member side. Published circuits and keys arrive as authenticated data.
+
+### Never
+
+Never publishes private witnesses or openings, and never treats planning as proof. Never discards an old opening before the acceptance is saved, and never resets lifetime genesis after root rotation. Never imports policy as code. Never runs on or trusts the server. Never holds balances on the member side and never reveals a counterpart.
+
+### States
+
+Uninitialized, then Accepted for a versioned opening. Preparation moves through Prepared, Proving, and AwaitingAcceptance back to Accepted. Uncertain outcomes move to Reconcile, pending obligations move to MustConsume, and the wallet can report Unavailable.
+
+### Test obligations
+
+Real-proof suite: replayed, wrong-owner, wrong-field, wrong-purpose, incomplete-inbox, stale-commitment, and dishonest-share cases fail. Crashes preserve accepted openings and pending outcome certificates. Double burn, debt-before-refill, reordered Answer, and punishment flows cannot refund a burn. Proof requests bind origin and community and keep communities unlinkable. The Rust core builds for native and `wasm32-unknown-unknown` with identical test vectors, with full line and branch coverage, real round trips, injected faults, atomic publication, per-community isolation, bounded work, and no identifiers, plaintext, or secrets in errors.
 
 ## Boundaries
 
