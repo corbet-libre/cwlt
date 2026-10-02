@@ -21,10 +21,18 @@ be integrated as an accepting replacement for Wallet.
 
 `src/maps.rs` and `src/hash.rs` retain the in-progress Rust port of the original
 `runtime/hashes.mjs`32-level indexed map and account hash input construction.
-They remain unwired until the concrete maintained Barretenberg adapter and actual
-signed-state implementation are complete; they have not been compiled or tested.
-No permutation is implemented here. The source preserves predecessor-before-append
-ordering and leaves the old map intact when any asynchronous hash fails.
+They remain unwired into the public engine until actual signed-state adoption is
+complete. `src/poseidon.rs` calls maintained `pso-poseidon`0.5 `hash_noir` with
+arkworks0.6 canonical field conversion; no permutation, constants or sponge is
+implemented here. The dependency's other `hash` method uses different framing
+for multiples of three and is deliberately not used. Its primary source is
+https://github.com/psonet/pso-poseidon; compatibility is NOT assumed from its README.
+`tests/maps.rs` executes that real Rust primitive and every Rust map operation
+against a fresh transcript from original `runtime/hashes.mjs` and maintained BB.
+CI generates that transcript before native and actual browser tests; no canned
+hash callback is accepted. The source preserves predecessor-before-append ordering
+and leaves the old map intact when any asynchronous hash fails. All Rust vectors
+remain UNCOMPILED/UNEXECUTED pending genuine lower-main dependency qualification.
 
 Remaining work: original enrollment and opening state, full ExtensionWitness
 transitions/public and private ABI, concrete native/browser maintained-BB
