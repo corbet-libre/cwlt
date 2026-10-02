@@ -88,3 +88,40 @@ See [LICENSE.md](LICENSE.md).
 Dependency updates follow main and are tested against one CI-resolved lockfile.
 Line and branch coverage target 100%; failures remain blocking. See
 [the coverage contract](docs/COVERAGE.md) for measurement and exclusions.
+
+The native member verifier also exposes `verify_outcome` for a separately authenticated
+settled relation. `WaveOutcomeStatement` contains the original `WaveStatement`,
+`WaveOutcome::{Answer,Close,Silence}`, and original receipt digest. The caller supplies
+its independently expected context, outcome and receipt digest. The returned
+`VerifiedWaveOutcome` has private fields and no deserializer or public constructor.
+Answer binds both recipient receipt and sender acknowledgment to the accepted slot;
+Close binds the recipient receipt; Silence proves only the sender's accepted refund
+after the original fixed lease. It makes no claim that an Answer/Close was received.
+These relations use the historical authorities committed at first contact; receipt
+authority substitutions require a separately qualified transition. Runtime proof
+qualification is pending; source presence is not successful verification evidence.
+
+## Durable passport custody
+
+With `passport`, construct `PassportHolder::from_holder_seed` through freshly
+authorized Keys; this now returns `Result<_, ckmg::Error>`. Keys supplies the
+original CPSD engine with its immutable private sealing key and wallet context.
+`passport::DurableHolder::create` explicitly initializes absent owner state in an
+actual cwst Store, or `open` restores an existing sealed record. Missing state in
+`open` is an error. No plaintext passport, private key or custom storage backend
+is introduced; all encryption/codecs remain in the original CPSD owner.
+
+`prepare_begin`, `prepare_finish` and `prepare_cancel` retain a private candidate.
+Only `Pending::commit` can return its public result: it compares the original
+Store version/current owner bytes, performs the actual compound CAS with other
+owners' changes and outputs, checks the exact nonforgeable commit receipt, then
+adopts the candidate. No caller boolean or hand-constructed receipt is accepted.
+Invalid issuance answers durably consume their attempt before returning the
+inner error. Companion records cannot overwrite the Wallet namespace.
+
+The read-only `session(&Store)` checks the same currently committed record;
+locked, uncertain or changed Store state refuses. Its borrow prevents mutation
+during proof generation. Vault still owns fresh Keys authorization and drops
+custody on lock. Real Memory/File Store restart, signed passport presentation,
+competing commits, namespace substitution, lost acknowledgement and cancelled
+actual writes have written tests; Rust/native/browser qualification remains open.

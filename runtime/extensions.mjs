@@ -105,6 +105,52 @@ export class ExtensionWitness extends AccountWitness {
       community:this.community,recipient:slot.peer,release_epoch:releaseEpoch,nullifier:deposit.nullifier,authorization_nullifier:deposit.authorizationNullifier,obligation:deposit.obligation,
       reporter:this.owner.member,secret:this.ownerSecret,state_policy:this.statePolicyHash,version:this.version,accepted_at:certificate.acceptedAt,state:fieldBytes(this.commitment),opening:extendedOpening(this.opening),certificate:certificate.signature,slot:slotInput(slot),kind}};
   }
+  wave(event,context,scope,issuerKey) {return this.waveEvidence(event,context,scope,issuerKey);}
+  waveOutcome(event,context,scope,issuerKey,outcome,resolution,acknowledgment) {
+    if(!['answer','close','silence'].includes(outcome))throw new Error('Unknown settled outcome');
+    return this.waveEvidence(event,context,scope,issuerKey,{outcome,resolution,acknowledgment});
+  }
+  async waveEvidence(event,{history,challenge},scope,issuerKey,settled) {
+    // All mutable state is detached before the first asynchronous hash.
+    const state=this.clone();state.owner=structuredClone(this.owner);state.ownerSecret=bytes(this.ownerSecret);
+    state.community=bytes(this.community);state.statePolicyHash=bytes(this.statePolicyHash);
+    state.extension=structuredClone(this.extension);state.certificate=structuredClone(this.certificate);
+    state.outgoing=this.outgoing.clone();state.incoming=this.incoming.clone();
+    history=bytes(history);challenge=bytes(challenge);scope=bytes(scope);issuerKey=bytes(issuerKey);
+    settled=settled?structuredClone(settled):undefined;
+    const slot=state.slots.get(event.toString());
+    const code=settled?{answer:1,close:2,silence:3}[settled.outcome]:0;
+    if(!slot||slot.phase!==(code===3?5:code?3:2)||!state.certificate)throw new Error('Accepted active reservation required');
+    const map=slot.role===0?state.outgoing:state.incoming,found=map.find(event);
+    if(!found)throw new Error('Missing reservation membership');
+    const selected=map.witness(found[0]),payload=await state.hashes.obligation(event,slot,slot.phase);
+    if(selected.leaf[1]!==payload)throw new Error('Reservation opening differs');
+    const receiptDigest=code&&code!==3?bytes(settled.resolution.ed25519ReceiptDigest):zeros();
+    const domain=code?0x63776c742e657874656e73696f6e2d6f7574636f6d652e7631n:0x63776c742e657874656e73696f6e2d776176652e7631n;
+    const binding=fieldBytes(await state.hashes.raw([domain,1n,
+      ...limbs32(state.ownerSecret),state.commitment,payload,...limbs32(challenge),...limbs32(history),
+      ...(code?[BigInt(code),...limbs32(receiptDigest)]:[])]));
+    const context={community:Array.from(state.community),owner:Array.from(state.owner.member),peer:Array.from(slot.peer),role:slot.role,
+      nonce:Array.from(slot.nonce),group:Array.from(slot.group),contactPolicy:Array.from(slot.contactPolicy),history:Array.from(history),challenge:Array.from(challenge),
+      openedAt:Number(slot.admittedAt),expiresAt:Number(slot.expiresAt),ownerAuthority:Array.from(fieldBytes(slot.ownerAuthority)),peerAuthority:Array.from(fieldBytes(slot.peerAuthority))};
+    const wave={context,statePolicy:Array.from(state.statePolicyHash),version:Number(state.version),state:Array.from(fieldBytes(state.commitment)),
+      acceptedAt:state.certificate.acceptedAt,binding:Array.from(binding)};
+    const result={statement:{kind:'wave',policy:state.extension,certificateKey:Array.from(issuerKey),wave},input:{extension:extInput(state.extension),issuer_key:issuerKey,scope,
+      community:state.community,owner:state.owner.member,peer:slot.peer,role:slot.role,nonce:slot.nonce,group:slot.group,contact_policy:slot.contactPolicy,
+      history,challenge,opened_at:slot.admittedAt,expires_at:slot.expiresAt,owner_authority:fieldBytes(slot.ownerAuthority),peer_authority:fieldBytes(slot.peerAuthority),
+      state_policy:state.statePolicyHash,version:state.version,state:fieldBytes(state.commitment),accepted_at:state.certificate.acceptedAt,binding,
+      secret:state.ownerSecret,opening:extendedOpening(state.opening),slot:slotInput(slot),selected,certificate:state.certificate.signature}};
+    if(code){
+      const resolution=settled.resolution??{kind:0,issuedAt:0n,historyDigest:zeros(),ed25519ReceiptDigest:zeros(),signature:new Uint8Array(64)};
+      const acknowledgment=settled.acknowledgment??{issuedAt:0n,signature:new Uint8Array(64)};
+      result.statement={kind:'outcome',policy:state.extension,certificateKey:Array.from(issuerKey),
+        outcome:{evidence:wave,outcome:settled.outcome,receiptDigest:Array.from(receiptDigest)}};
+      Object.assign(result.input,{outcome:code,receipt_digest:receiptDigest,owner_enrollment:enrollmentInput(slot.ownerEnrollment),peer_enrollment:enrollmentInput(slot.peerEnrollment),
+        resolution:{kind:resolution.kind,issued_at:resolution.issuedAt,history_digest:resolution.historyDigest,ed25519_receipt_digest:resolution.ed25519ReceiptDigest,signature:resolution.signature},
+        acknowledgment:{issued_at:acknowledgment.issuedAt,signature:acknowledgment.signature}});
+    }
+    return result;
+  }
   record(context) {
     const total=this.opening.accepted+this.opening.declined+this.opening.punished;
     const shares=total>=BigInt(this.extension.publicRecordQuorum)?[Number(this.opening.accepted*10000n/total),Number(this.opening.declined*10000n/total)]:null;
