@@ -21,6 +21,15 @@ callback wrapping the native or wasm Rust `prepare` function. Callers keep old
 openings until the issuer's signed acceptance is checked and saved atomically.
 Raw witness objects and Rust JSON inputs/outputs must stay on member devices.
 
+`ExtensionWitness.recordEpoch` constructs the original epoch relation's exact
+or descended private witness. It takes the authenticated current descriptor,
+privately opened common-download leaf/path and, for a descendant, the original
+issuer ancestry certificate saved with the accepted state. It exposes only the
+public descriptor, owner, context and quorum shares in the statement. This source
+candidate is not yet compiled or qualified; production Keys/Envelope delivery,
+accepted-state custody and current Charter enforcement remain integration work.
+The builder's shape checks grant no proof or listing/contact authority.
+
 For an authorized outcome, retain its accepted opening and issuer certificate
 until a deposit proof is recoverable or the deposit is accepted. A later account
 update clears the current authorization field but cannot revoke a historically

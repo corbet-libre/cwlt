@@ -89,6 +89,7 @@ impl WavePolicy {
 /// Exact independently expected contact transcript, with the original common
 /// lease and one-use challenge. All fields are bound in the proof.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema, schemars::JsonSchema))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WaveContext {
     pub community: [u8; 32],
@@ -108,6 +109,7 @@ pub struct WaveContext {
 /// Public evidence only. The issuer certificate and private opening stay in the
 /// proof witness. The relation permits active phase two only.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(utoipa::ToSchema, schemars::JsonSchema))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WaveStatement {
     pub context: WaveContext,

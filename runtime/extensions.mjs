@@ -5,6 +5,7 @@ import {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput} from './hashes
 import {statementFromInput,publicInputValues,validityHorizon} from './statement.mjs';
 import {fieldBytes,fieldValue,limbs32} from '@corbet-labs/czkp/primitives';
 import {cat,be,sha,hex,zeros,random} from '@corbet-labs/czkp/encoding';
+import {recordEpochPublicInputs,recordLeafCommitment,recordBytes} from '@corbet-labs/czkp/record';
 export {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput};
 export {checkpointFromVerified} from './hashes.mjs';
 const bytes=v=>Uint8Array.from(v);
@@ -158,5 +159,42 @@ export class ExtensionWitness extends AccountWitness {
     const record={context,community:Array.from(this.community),owner:Array.from(this.owner.member),version:Number(this.version),state:Array.from(fieldBytes(this.commitment)),inbox:{root:Array.from(this.opening.inbox)},shares};
     return {statement:{kind:'record',policy:this.extension,record},input:{extension:extInput(this.extension),community:this.community,owner:this.owner.member,version:this.version,state:fieldBytes(this.commitment),inbox:this.opening.inbox,
       purpose:context.purpose==='firstContact'?0:1,challenge:context.challenge,expires_at:context.expiresAt,present:shares!==null,shares:shares??[0,0,0],state_policy:this.statePolicyHash,registered_secret:fieldValue(this.owner.secretHash),opening:extendedOpening(this.opening)}};
+  }
+  // Member-only proof construction. The caller supplies an already authenticated
+  // current descriptor and its privately opened common-download witness. This
+  // builder cannot authenticate a descriptor or grant listing/contact authority.
+  async recordEpoch(context,witness,scope,issuerKey) {
+    const state=this.clone();state.community=bytes(this.community);state.owner=structuredClone(this.owner);
+    state.statePolicyHash=bytes(this.statePolicyHash);state.extension=structuredClone(this.extension);
+    context=structuredClone(context);witness=structuredClone(witness);scope=structuredClone(scope);issuerKey=recordBytes(issuerKey,64);
+    const total=state.opening.accepted+state.opening.declined+state.opening.punished;
+    const shares=total>=BigInt(state.extension.publicRecordQuorum)?[Number(state.opening.accepted*10000n/total),Number(state.opening.declined*10000n/total)]:null;
+    if(shares)shares.push(10000-shares[0]-shares[1]);
+    const record={epoch:witness.epoch,owner:Array.from(state.owner.member),context,shares};
+    const input=recordEpochPublicInputs(record,scope,issuerKey),leaf=witness.leaf;
+    const equal=(a,b)=>hex(Uint8Array.from(a))===hex(Uint8Array.from(b));
+    if(!equal(state.community,input.community)||!equal(recordBytes(leaf.owner),state.owner.member))throw new Error('Foreign record witness');
+    const depth=Math.max(1,Math.ceil(Math.log2(witness.epoch.leafCount)));
+    if(!Number.isSafeInteger(witness.index)||witness.index<0||witness.index>=witness.epoch.leafCount
+      ||!Array.isArray(witness.path)||witness.path.length!==depth)throw new Error('Record path bounds');
+    const path=witness.path.map(p=>recordBytes(p));while(path.length<32)path.push(Array(32).fill(0));
+    const frozenLeaf=await recordLeafCommitment(state.community,witness.epoch.epoch,leaf);
+    const current=fieldBytes(state.commitment),version=Number(state.version);
+    const descended=version!==leaf.version||!equal(current,leaf.state)||!equal(state.opening.inbox,leaf.requiredInbox);
+    let issuedAt=0,signature=new Uint8Array(64);
+    if(descended){
+      const a=witness.ancestry;
+      if(!a||!Number.isSafeInteger(a.issuedAt)||a.issuedAt<input.epoch_start||a.issuedAt>=input.expires_at
+        ||a.epoch!==input.epoch||a.version!==version||version<=leaf.version
+        ||!equal(recordBytes(a.community),state.community)||!equal(recordBytes(a.owner),state.owner.member)
+        ||!equal(recordBytes(a.root),input.epoch_root)||!equal(recordBytes(a.frozenLeaf),frozenLeaf)
+        ||!equal(recordBytes(a.state),current)||!equal(recordBytes(a.proofScope?.circuitDigest),scope.circuitDigest)
+        ||!equal(recordBytes(a.proofScope?.verifyingKeyDigest),scope.verifyingKeyDigest))throw new Error('Missing or unrelated ancestry certificate');
+      issuedAt=a.issuedAt;signature=recordBytes(a.signature,64);
+    }
+    return {statement:{kind:'recordEpoch',policy:state.extension,record},input:{...input,
+      extension:extInput(state.extension),version:state.version,state:current,frozen_version:leaf.version,frozen_state:leaf.state,
+      required_inbox:leaf.requiredInbox,blinding:leaf.blinding,path,index:witness.index,descended,issued_at:issuedAt,certificate:signature,
+      state_policy:state.statePolicyHash,registered_secret:fieldValue(state.owner.secretHash),opening:extendedOpening(state.opening)}};
   }
 }
