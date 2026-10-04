@@ -8,11 +8,13 @@ use std::sync::Arc;
 use zeroize::Zeroizing;
 
 const MAGIC: &[u8] = b"cwlt.extension-holder.v1\0";
+const RECORD_MAGIC: &[u8] = b"cwlt.extension-holder.v2\0";
 const NONCE: usize = 24;
 // Current uninitialized state: state tag, original purpose seed. Accepted-state
 // encoding is intentionally not inferred from caller bytes or another proof.
 const PLAIN: usize = 1 + 32;
 const SIZE: usize = MAGIC.len() + NONCE + PLAIN + 16;
+const MAX_SIZE: usize = SIZE + 8 * 1024 * 1024 + 16 * 1024;
 
 pub(super) struct Binding {
     cipher: XChaCha20Poly1305,
@@ -39,7 +41,9 @@ pub struct Sealed(Vec<u8>);
 impl Sealed {
     /// Validate the outer format before authenticated restore by the same engine.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() != SIZE || !bytes.starts_with(MAGIC) {
+        if !((bytes.len() == SIZE && bytes.starts_with(MAGIC))
+            || (bytes.len() > SIZE && bytes.len() <= MAX_SIZE && bytes.starts_with(RECORD_MAGIC)))
+        {
             return Err(Error::Invalid);
         }
         Ok(Self(bytes.to_vec()))
@@ -55,8 +59,17 @@ impl Engine {
     pub fn seal(&self) -> Result<Sealed, Error> {
         let mut nonce = [0; NONCE];
         getrandom::fill(&mut nonce).map_err(|_| Error::Crypto)?;
-        let mut plaintext = Zeroizing::new([0; PLAIN]);
+        let mut plaintext = Zeroizing::new(vec![0; PLAIN]);
         plaintext[1..].copy_from_slice(self.seed.as_ref());
+        if let Some(record) = &self.record {
+            record.validate()?;
+            plaintext[0] = 1;
+            // Only this concrete private owner state is serializable here.
+            serde_json::to_writer(&mut *plaintext, record).map_err(|_| Error::Invalid)?;
+        }
+        if plaintext.len() + MAGIC.len() + NONCE + 16 > MAX_SIZE {
+            return Err(Error::Invalid);
+        }
         let ciphertext = self
             .sealing
             .cipher
@@ -69,7 +82,11 @@ impl Engine {
             )
             .map_err(|_| Error::Crypto)?;
         let mut bytes = Vec::with_capacity(SIZE);
-        bytes.extend_from_slice(MAGIC);
+        bytes.extend_from_slice(if self.record.is_some() {
+            RECORD_MAGIC
+        } else {
+            MAGIC
+        });
         bytes.extend_from_slice(&nonce);
         bytes.extend_from_slice(&ciphertext);
         Ok(Sealed(bytes))
@@ -91,12 +108,23 @@ impl Engine {
                 )
                 .map_err(|_| Error::Crypto)?,
         );
-        if plaintext.len() != PLAIN || plaintext[0] != 0 || plaintext[1..] != self.seed[..] {
+        if plaintext.len() < PLAIN || plaintext[1..PLAIN] != self.seed[..] {
             return Err(Error::Crypto);
         }
+        let record = match plaintext[0] {
+            0 if plaintext.len() == PLAIN && sealed.0.starts_with(MAGIC) => None,
+            1 if sealed.0.starts_with(RECORD_MAGIC) => {
+                let record: super::record::State =
+                    serde_json::from_slice(&plaintext[PLAIN..]).map_err(|_| Error::Crypto)?;
+                record.validate()?;
+                Some(record)
+            }
+            _ => return Err(Error::Crypto),
+        };
         Ok(Self {
             seed: self.seed.clone(),
             sealing: Arc::clone(&self.sealing),
+            record,
         })
     }
 }

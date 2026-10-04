@@ -4,6 +4,7 @@
 //! Store transactions; constructing this engine does not establish accepted state.
 #![forbid(unsafe_code)]
 
+mod record;
 mod sealing;
 
 use std::sync::Arc;
@@ -49,6 +50,7 @@ impl std::error::Error for Error {}
 pub struct Engine {
     seed: Zeroizing<[u8; 32]>,
     sealing: Arc<sealing::Binding>,
+    record: Option<record::State>,
 }
 
 impl Engine {
@@ -68,6 +70,7 @@ impl Engine {
         Ok(Self {
             seed: owned_seed,
             sealing: Arc::new(sealing),
+            record: None,
         })
     }
 }

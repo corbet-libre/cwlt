@@ -28,3 +28,7 @@ pub fn prepare(input: &str) -> Result<String, String> {
 
 /// Extension-state counterpart reservation verification.
 pub mod wave;
+
+/// Durable epoch proof and presentation-key custody through the original Store.
+#[cfg(feature = "record")]
+pub mod record;

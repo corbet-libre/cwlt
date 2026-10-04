@@ -17,6 +17,7 @@ ark-bn254 = "0.6"
 ark-ff = "0.6"
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
 czkp = { git = "https://github.com/corbet-foss/czkp", branch = "main" }
+ed25519-dalek = { version = "3.0", features = ["zeroize"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 pso-poseidon = "0.5"
 serde = { version = "1", features = ["derive"] }

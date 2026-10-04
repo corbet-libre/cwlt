@@ -163,14 +163,14 @@ export class ExtensionWitness extends AccountWitness {
   // Member-only proof construction. The caller supplies an already authenticated
   // current descriptor and its privately opened common-download witness. This
   // builder cannot authenticate a descriptor or grant listing/contact authority.
-  async recordEpoch(context,witness,scope,issuerKey) {
+  async recordEpoch(presentationPublicKey,witness,scope,issuerKey) {
     const state=this.clone();state.community=bytes(this.community);state.owner=structuredClone(this.owner);
     state.statePolicyHash=bytes(this.statePolicyHash);state.extension=structuredClone(this.extension);
-    context=structuredClone(context);witness=structuredClone(witness);scope=structuredClone(scope);issuerKey=recordBytes(issuerKey,64);
+    presentationPublicKey=recordBytes(presentationPublicKey);witness=structuredClone(witness);scope=structuredClone(scope);issuerKey=recordBytes(issuerKey,64);
     const total=state.opening.accepted+state.opening.declined+state.opening.punished;
     const shares=total>=BigInt(state.extension.publicRecordQuorum)?[Number(state.opening.accepted*10000n/total),Number(state.opening.declined*10000n/total)]:null;
     if(shares)shares.push(10000-shares[0]-shares[1]);
-    const record={epoch:witness.epoch,owner:Array.from(state.owner.member),context,shares};
+    const record={epoch:witness.epoch,owner:Array.from(state.owner.member),presentationKeyCommitment:Array.from(await sha(Uint8Array.from(presentationPublicKey))),shares};
     const input=recordEpochPublicInputs(record,scope,issuerKey),leaf=witness.leaf;
     const equal=(a,b)=>hex(Uint8Array.from(a))===hex(Uint8Array.from(b));
     if(!equal(state.community,input.community)||!equal(recordBytes(leaf.owner),state.owner.member))throw new Error('Foreign record witness');
@@ -184,7 +184,7 @@ export class ExtensionWitness extends AccountWitness {
     let issuedAt=0,signature=new Uint8Array(64);
     if(descended){
       const a=witness.ancestry;
-      if(!a||!Number.isSafeInteger(a.issuedAt)||a.issuedAt<input.epoch_start||a.issuedAt>=input.expires_at
+      if(!a||!Number.isSafeInteger(a.issuedAt)||a.issuedAt<input.epoch_start||a.issuedAt>=input.epoch_end
         ||a.epoch!==input.epoch||a.version!==version||version<=leaf.version
         ||!equal(recordBytes(a.community),state.community)||!equal(recordBytes(a.owner),state.owner.member)
         ||!equal(recordBytes(a.root),input.epoch_root)||!equal(recordBytes(a.frozenLeaf),frozenLeaf)
@@ -193,7 +193,7 @@ export class ExtensionWitness extends AccountWitness {
       issuedAt=a.issuedAt;signature=recordBytes(a.signature,64);
     }
     return {statement:{kind:'recordEpoch',policy:state.extension,record},input:{...input,
-      extension:extInput(state.extension),version:state.version,state:current,frozen_version:leaf.version,frozen_state:leaf.state,
+      presentation_public_key:presentationPublicKey,extension:extInput(state.extension),version:state.version,state:current,frozen_version:leaf.version,frozen_state:leaf.state,
       required_inbox:leaf.requiredInbox,blinding:leaf.blinding,path,index:witness.index,descended,issued_at:issuedAt,certificate:signature,
       state_policy:state.statePolicyHash,registered_secret:fieldValue(state.owner.secretHash),opening:extendedOpening(state.opening)}};
   }
