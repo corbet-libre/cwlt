@@ -244,6 +244,47 @@ pub struct WaveVerifier {
     authority_until: u64,
     verifier: czkp::process::ProcessVerifier,
 }
+
+/// Per-call Wave refusal, with no request contents or worker output retained.
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WaveVerificationFailure {
+    /// An original policy, expected-context or clock check refused the request.
+    Context(Error),
+    /// The original maintained proof worker refused or could not complete.
+    Process(czkp::process::ProcessVerificationFailure),
+}
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
+impl WaveVerificationFailure {
+    /// Recover the original Wave verifier error without weakening acceptance.
+    pub fn error(self) -> Error {
+        match self {
+            Self::Context(error) => error,
+            Self::Process(failure) => failure.error(),
+        }
+    }
+
+    /// Fixed label for this attempt; never derived from request values.
+    pub fn category(&self) -> &'static str {
+        match self {
+            Self::Context(_) => "wave_context",
+            Self::Process(failure) => failure.category(),
+        }
+    }
+}
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
+impl From<Error> for WaveVerificationFailure {
+    fn from(error: Error) -> Self {
+        Self::Context(error)
+    }
+}
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
+impl From<czkp::process::ProcessVerificationFailure> for WaveVerificationFailure {
+    fn from(failure: czkp::process::ProcessVerificationFailure) -> Self {
+        Self::Process(failure)
+    }
+}
+
 #[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 impl WaveVerifier {
     pub fn from_balance(
@@ -288,15 +329,26 @@ impl WaveVerifier {
         expected: &WaveContext,
         now: u64,
     ) -> Result<VerifiedWaveReservation, Error> {
+        self.verify_detailed(statement, proof, expected, now)
+            .map_err(WaveVerificationFailure::error)
+    }
+    /// The same reservation verification, retaining a value-free failure cause.
+    pub fn verify_detailed(
+        &self,
+        statement: &WaveStatement,
+        proof: &[u8],
+        expected: &WaveContext,
+        now: u64,
+    ) -> Result<VerifiedWaveReservation, WaveVerificationFailure> {
         if now < self.observed_at {
-            return Err(Error::ClockRollback);
+            return Err(Error::ClockRollback.into());
         }
         if now >= self.authority_until {
-            return Err(Error::Expired);
+            return Err(Error::Expired.into());
         }
         validate_context(&self.policy, statement, expected, now, None)?;
         let input = self.public_input(statement);
-        self.verifier.verify(&input, proof)?;
+        self.verifier.verify_detailed(&input, proof)?;
         Ok(VerifiedWaveReservation {
             context: expected.clone(),
         })
@@ -313,17 +365,37 @@ impl WaveVerifier {
         expected_receipt_digest: &[u8; 32],
         now: u64,
     ) -> Result<VerifiedWaveOutcome, Error> {
+        self.verify_outcome_detailed(
+            statement,
+            proof,
+            expected,
+            expected_outcome,
+            expected_receipt_digest,
+            now,
+        )
+        .map_err(WaveVerificationFailure::error)
+    }
+    /// The same outcome verification, retaining a value-free failure cause.
+    pub fn verify_outcome_detailed(
+        &self,
+        statement: &WaveOutcomeStatement,
+        proof: &[u8],
+        expected: &WaveContext,
+        expected_outcome: WaveOutcome,
+        expected_receipt_digest: &[u8; 32],
+        now: u64,
+    ) -> Result<VerifiedWaveOutcome, WaveVerificationFailure> {
         if now < self.observed_at {
-            return Err(Error::ClockRollback);
+            return Err(Error::ClockRollback.into());
         }
         if now >= self.authority_until {
-            return Err(Error::Expired);
+            return Err(Error::Expired.into());
         }
         if statement.outcome != expected_outcome
             || &statement.receipt_digest != expected_receipt_digest
             || (statement.outcome == WaveOutcome::Silence && statement.receipt_digest != [0; 32])
         {
-            return Err(Error::PolicyMismatch);
+            return Err(Error::PolicyMismatch.into());
         }
         validate_context(
             &self.policy,
@@ -336,7 +408,7 @@ impl WaveVerifier {
         input["circuit"] = serde_json::json!("outcome");
         input["input"]["outcome"] = serde_json::json!(statement.outcome.code());
         input["input"]["receipt_digest"] = serde_json::json!(statement.receipt_digest);
-        self.verifier.verify(&input, proof)?;
+        self.verifier.verify_detailed(&input, proof)?;
         Ok(VerifiedWaveOutcome {
             context: expected.clone(),
             outcome: statement.outcome,
@@ -402,6 +474,130 @@ mod tests {
             binding: [16; 32],
         };
         (policy, statement)
+    }
+    #[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
+    #[test]
+    fn detailed_refusal_preserves_original_context_checks_and_error_mapping() {
+        use czkp::process::{ProcessVerificationFailure, ProcessVerifier, ProcessVerifierConfig};
+        let (policy, statement) = fixture();
+        let dir = tempfile::tempdir().unwrap();
+        let verifier = WaveVerifier {
+            observed_at: 20,
+            authority_until: 150,
+            verifier: ProcessVerifier::new(ProcessVerifierConfig {
+                // There is no accepting stub: a context that reaches the real
+                // process boundary must fail to start this absent executable.
+                node: dir.path().join("absent-node"),
+                script: dir.path().join("worker.mjs"),
+                artifact_config: dir.path().join("config.json"),
+                scope: policy.proof_scope.clone(),
+                timeout: std::time::Duration::from_secs(1),
+                maximum_parallel: 1,
+                max_proof_bytes: 100,
+                node_heap_megabytes: 64,
+            })
+            .unwrap(),
+            policy,
+        };
+        let mut wrong_context = statement.context.clone();
+        wrong_context.challenge[0] ^= 1;
+        for (expected, now, failure) in [
+            (
+                &statement.context,
+                19,
+                WaveVerificationFailure::Context(Error::ClockRollback),
+            ),
+            (
+                &statement.context,
+                150,
+                WaveVerificationFailure::Context(Error::Expired),
+            ),
+            (
+                &wrong_context,
+                22,
+                WaveVerificationFailure::Context(Error::PolicyMismatch),
+            ),
+            (
+                &statement.context,
+                22,
+                WaveVerificationFailure::Process(ProcessVerificationFailure::Spawn),
+            ),
+        ] {
+            assert_eq!(
+                verifier
+                    .verify_detailed(&statement, &[1], expected, now)
+                    .err(),
+                Some(failure.clone())
+            );
+            assert_eq!(
+                verifier.verify(&statement, &[1], expected, now).err(),
+                Some(failure.error())
+            );
+        }
+        let outcome = WaveOutcomeStatement {
+            evidence: statement,
+            outcome: WaveOutcome::Answer,
+            receipt_digest: [23; 32],
+        };
+        for (expected_outcome, digest, now, failure) in [
+            (
+                WaveOutcome::Answer,
+                [23; 32],
+                19,
+                WaveVerificationFailure::Context(Error::ClockRollback),
+            ),
+            (
+                WaveOutcome::Answer,
+                [23; 32],
+                150,
+                WaveVerificationFailure::Context(Error::Expired),
+            ),
+            (
+                WaveOutcome::Close,
+                [23; 32],
+                22,
+                WaveVerificationFailure::Context(Error::PolicyMismatch),
+            ),
+            (
+                WaveOutcome::Answer,
+                [24; 32],
+                22,
+                WaveVerificationFailure::Context(Error::PolicyMismatch),
+            ),
+            (
+                WaveOutcome::Answer,
+                [23; 32],
+                22,
+                WaveVerificationFailure::Process(ProcessVerificationFailure::Spawn),
+            ),
+        ] {
+            assert_eq!(
+                verifier
+                    .verify_outcome_detailed(
+                        &outcome,
+                        &[1],
+                        &outcome.evidence.context,
+                        expected_outcome,
+                        &digest,
+                        now,
+                    )
+                    .err(),
+                Some(failure.clone())
+            );
+            assert_eq!(
+                verifier
+                    .verify_outcome(
+                        &outcome,
+                        &[1],
+                        &outcome.evidence.context,
+                        expected_outcome,
+                        &digest,
+                        now,
+                    )
+                    .err(),
+                Some(failure.error())
+            );
+        }
     }
     // Shape/time checks are not evidence: only the real verifier can construct a
     // VerifiedWaveReservation. Real proof success and tampering run in cblc CI.
