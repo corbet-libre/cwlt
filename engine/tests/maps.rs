@@ -30,8 +30,8 @@ struct State {
 struct Witness {
     leaf: [String; 4],
     index: u64,
-    path: [String; 32],
-    append_path: [String; 32],
+    path: [String; 20],
+    append_path: [String; 20],
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

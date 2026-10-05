@@ -106,8 +106,8 @@ pub struct WaveContext {
     pub owner_authority: [u8; 32],
     pub peer_authority: [u8; 32],
 }
-/// Public evidence only. The issuer certificate and private opening stay in the
-/// proof witness. The relation permits active phase two only.
+/// Public evidence with the issuer certificate verified natively. The private
+/// opening stays in the proof witness. The relation permits active phase two only.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(utoipa::ToSchema, schemars::JsonSchema))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -118,6 +118,7 @@ pub struct WaveStatement {
     pub state: [u8; 32],
     pub accepted_at: u64,
     pub binding: [u8; 32],
+    pub certificate: Vec<u8>,
 }
 /// Original settled extension outcomes. Silence is only the sender's fixed-date
 /// refund; it never attests that the recipient sent an Answer or Close.
@@ -199,6 +200,7 @@ fn validate_context(
         || c.challenge == [0; 32]
         || c.opened_at == 0
         || c.expires_at <= c.opened_at
+        || statement.certificate.len() != 64
         || statement.version == 0
         || statement.version > czkp::MAX_INTEGER
     {
@@ -351,7 +353,7 @@ impl WaveVerifier {
             "issuer_key":self.policy.certificate_key,"scope":self.policy.proof_scope.circuit_digest,
             "community":c.community,"owner":c.owner,"peer":c.peer,"role":c.role,"nonce":c.nonce,"group":c.group,"contact_policy":c.contact_policy,
             "history":c.history,"challenge":c.challenge,"opened_at":c.opened_at,"expires_at":c.expires_at,"owner_authority":c.owner_authority,"peer_authority":c.peer_authority,
-            "state_policy":statement.state_policy,"version":statement.version,"state":statement.state,"accepted_at":statement.accepted_at,"binding":statement.binding,
+            "state_policy":statement.state_policy,"version":statement.version,"state":statement.state,"accepted_at":statement.accepted_at,"binding":statement.binding,"certificate":statement.certificate,
         }})
     }
 }
@@ -400,6 +402,7 @@ mod tests {
             state: [15; 32],
             accepted_at: 21,
             binding: [16; 32],
+            certificate: vec![1; 64],
         };
         (policy, statement)
     }

@@ -6,7 +6,7 @@ import { refreshEnrollment, verifyEnrollmentPath, verifyReceiptEnrollment } from
 import { statementFromInput, publicInputValues, statementBytes, validateStatement, validityHorizon, POLICY_WIRE } from './statement.mjs';
 export { statementFromInput, publicInputValues, statementBytes, validateStatement, validityHorizon, PUBLIC_INPUT_COUNT } from './statement.mjs';
 export const emptyMapWitness = () => ({ leaf: [0n, 0n, 0n, 0n], index: 0n,
-  path: Array(32).fill(0n), append_path: Array(32).fill(0n) });
+  path: Array(20).fill(0n), append_path: Array(20).fill(0n) });
 export const enrollmentInput = entry => ({ key: entry.key, secret_hash: entry.secretHash, start: entry.start,
   end: entry.end, delegation_digest: entry.delegationDigest, path: entry.path, index: entry.index });
 export const openingInput = s => ({ available: s.available, reserved: s.reserved,

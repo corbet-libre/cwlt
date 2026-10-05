@@ -1,17 +1,20 @@
 use cwlt_engine::{Engine, Sealed};
-use czkp::record::{Context, Epoch, Purpose, Record, Use, presentation_key_commitment};
+use czkp::record::{Context, Epoch, Purpose, Record, Use, presentation_key};
 fn engine() -> Engine {
     Engine::from_seed_and_sealing_key(&mut [7; 32], &mut [8; 32], b"record-fixture").unwrap()
 }
 fn epoch() -> Epoch {
     Epoch {
-        purpose: Purpose::RecordEpochV1,
+        purpose: Purpose::RecordEpochV3,
         community: [1; 32],
         policy_epoch: 1,
         epoch: 2,
         starts_at: 200,
         expires_at: 300,
         root: [2; 32],
+        issuer_key: ed25519_dalek::SigningKey::from_bytes(&[19; 32])
+            .verifying_key()
+            .to_bytes(),
         proof_scope: czkp::ProofScope {
             circuit_digest: [3; 32],
             verifying_key_digest: [4; 32],
@@ -46,7 +49,14 @@ fn epoch_key_cache_is_sealed_and_restored_without_proving() {
     let record = Record {
         epoch: epoch.clone(),
         owner: [6; 32],
-        presentation_key_commitment: presentation_key_commitment(&public),
+        presentation_key: presentation_key(&public),
+        blinded_leaf: [1; 32],
+        certificate: ed25519_dalek::Signer::sign(
+            &ed25519_dalek::SigningKey::from_bytes(&[19; 32]),
+            &czkp::record::certificate_bytes(&[1; 32], 2, &[1; 32]).unwrap(),
+        )
+        .to_bytes()
+        .to_vec(),
         shares: None,
     };
     assert!(

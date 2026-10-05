@@ -1,6 +1,6 @@
 //! Epoch-local presentation custody. Keys never cross the Wallet boundary.
 use super::{Engine, Error};
-use czkp::record::{Context, Epoch, Presentation, Record, presentation_key_commitment};
+use czkp::record::{Context, Epoch, Presentation, Record, presentation_key};
 use ed25519_dalek::{Signer, SigningKey};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
@@ -23,13 +23,18 @@ impl State {
         SigningKey::from_bytes(&self.key).verifying_key().to_bytes()
     }
     pub(super) fn validate(&self) -> Result<(), Error> {
-        let record = Record {
-            epoch: self.epoch.clone(),
-            owner: self.owner,
-            presentation_key_commitment: presentation_key_commitment(&self.public_key()),
-            shares: None,
-        };
-        record.validate().map_err(|_| Error::Invalid)?;
+        let period = self
+            .epoch
+            .expires_at
+            .checked_sub(self.epoch.starts_at)
+            .ok_or(Error::Invalid)?;
+        self.epoch
+            .validate(&self.epoch.community, period)
+            .map_err(|_| Error::Invalid)?;
+        if self.owner == [0; 32] || self.epoch.community == [0; 32] || self.epoch.policy_epoch == 0
+        {
+            return Err(Error::Invalid);
+        }
         if let Some((record, proof)) = &self.cached {
             self.check_cache(record, proof)?;
         }
@@ -37,9 +42,17 @@ impl State {
     }
     fn check_cache(&self, record: &Record, proof: &str) -> Result<(), Error> {
         record.validate().map_err(|_| Error::Invalid)?;
+        czkp::record::verify_certificate(
+            &record.epoch.issuer_key,
+            &record.epoch.community,
+            record.epoch.epoch,
+            &record.blinded_leaf,
+            &record.certificate,
+        )
+        .map_err(|_| Error::Invalid)?;
         if record.epoch != self.epoch
             || record.owner != self.owner
-            || record.presentation_key_commitment != presentation_key_commitment(&self.public_key())
+            || record.presentation_key != presentation_key(&self.public_key())
             || proof.is_empty()
             || proof.len() > 8 * 1024 * 1024
             || proof.len() % 2 != 0

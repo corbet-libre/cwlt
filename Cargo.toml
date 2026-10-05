@@ -53,6 +53,7 @@ wasm-bindgen-test = "0.3"
 tempfile = "3"
 
 [dev-dependencies]
+ed25519-dalek = "3.0"
 ckmg = { git = "https://github.com/corbet-foss/ckmg", branch = "main", default-features = false }
 futures = { version = "0.3", features = ["executor"] }
 csgn = { git = "https://github.com/corbet-foss/csgn", branch = "main", default-features = false, features = ["volatile-signer"] }

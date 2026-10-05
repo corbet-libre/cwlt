@@ -4,7 +4,7 @@ use super::hash::{Hash, integer};
 use super::{Error, Field};
 use std::collections::BTreeMap;
 
-pub(super) const DEPTH: usize = 32;
+pub(super) const DEPTH: usize = 20;
 const LIMIT: u64 = 1 << DEPTH;
 const ZERO: Field = [0; 32];
 
