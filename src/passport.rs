@@ -20,7 +20,16 @@ pub use cpsd::{
 /// ```
 pub struct Holder(cpsd::OpaqueHolder);
 
+mod durable;
+pub use durable::{DurableHolder, DurableSession, Pending, PersistenceError};
+
 impl Holder {
+    /// Consume the concrete freshly authorized Keys seed capability. Neither the
+    /// seed nor the movable holder engine is exposed by a session or callback.
+    pub fn from_holder_seed(seed: ckmg::HolderSeed<'_>) -> Result<Self, ckmg::Error> {
+        seed.into_passport_holder().map(Self)
+    }
+
     /// Consume and wipe a dedicated holder seed derived by Keys.
     /// This is not a passkey root; no KDF or alternative identity recipe lives here.
     pub fn from_seed(seed: &mut [u8; 32]) -> Self {

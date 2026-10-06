@@ -75,11 +75,19 @@ jobs:
         components: rustfmt, clippy
         targets: wasm32-unknown-unknown
     - uses: Swatinem/rust-cache@v2
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+    - name: Generate original maintained-BB map vectors for Rust and browser
+      run: |
+        npm ci --no-audit --no-fund
+        node engine/tests/maps.mjs "$RUNNER_TEMP/cwlt-map-vectors.json"
+        printf 'CWLT_MAP_VECTORS=%s\n' "$RUNNER_TEMP/cwlt-map-vectors.json" >> "$GITHUB_ENV"
     - run: 'rustc --version
 
         cargo fmt --check || { cargo fmt; git diff > formatting.patch; exit 1; }'
-    - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-    - run: cargo test --locked --all-features
+    - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+    - run: cargo test --locked --workspace --all-features
     - uses: taiki-e/install-action@v2
       with:
         tool: wasm-pack
@@ -89,6 +97,8 @@ jobs:
         node-version: 24
     - run: node tests/wasm.mjs
     - run: wasm-pack test --node --all-features
+    - name: Execute internal custody and map vectors in actual Chromium
+      run: wasm-pack test --headless --chrome engine
     - uses: actions/upload-artifact@v7
       if: always()
       with:
@@ -128,6 +138,14 @@ jobs:
     - uses: taiki-e/install-action@v2
       with:
         tool: cargo-llvm-cov
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+    - name: Regenerate original BB vectors for the same locked coverage graph
+      run: |
+        npm ci --no-audit --no-fund
+        node engine/tests/maps.mjs "$RUNNER_TEMP/cwlt-map-vectors.json"
+        printf 'CWLT_MAP_VECTORS=%s\n' "$RUNNER_TEMP/cwlt-map-vectors.json" >> "$GITHUB_ENV"
     - run: 'rustc --version
 
         cargo llvm-cov --version'
