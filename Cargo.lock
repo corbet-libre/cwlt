@@ -613,7 +613,7 @@ dependencies = [
 [[package]]
 name = "cpsd"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cpsd?branch=main#91db73e1de266d6ce03c8f1b81397684908c28fb"
+source = "git+https://git.corbet.ch/corbet-foss/cpsd?branch=main#b62f90b07fa75a34804c32fa59ec87200be6f786"
 dependencies = [
  "ark-bls12-381",
  "ark-ec",
@@ -811,7 +811,7 @@ dependencies = [
 [[package]]
 name = "csgn"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/csgn?branch=main#cce187a51f6e74cae82a173cf77b78c52426326c"
+source = "git+https://git.corbet.ch/corbet-foss/csgn?branch=main#9d5a57b655a7a7baa13a1cbab6c4068b186a7efd"
 dependencies = [
  "ciborium-ll",
  "coset",
