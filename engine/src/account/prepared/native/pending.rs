@@ -43,6 +43,9 @@ pub struct PendingGenesisBinding {
     /// `None` is state A (sent); `Some` is state B and is never zero or equal to
     /// the request digest.
     pub extended_acceptance_digest: Option<[u8; 32]>,
+    /// The fully verified operator response, sealed in state B so activation
+    /// never needs a re-send. `Some` exactly when the digest is `Some`.
+    pub response: Option<AcceptedResponse>,
     /// Opaque authenticated upper binding and exact signed outbox bytes.
     pub upper: Vec<u8>,
 }
@@ -67,27 +70,27 @@ impl SealedPendingGenesis {
     }
 }
 
-struct Writer(Zeroizing<Vec<u8>>);
+pub(super) struct Writer(pub(super) Zeroizing<Vec<u8>>);
 impl Writer {
-    fn bytes(&mut self, value: &[u8]) {
+    pub(super) fn bytes(&mut self, value: &[u8]) {
         self.0.extend_from_slice(value);
     }
-    fn u32(&mut self, value: u32) {
+    pub(super) fn u32(&mut self, value: u32) {
         self.bytes(&value.to_be_bytes());
     }
-    fn u64(&mut self, value: u64) {
+    pub(super) fn u64(&mut self, value: u64) {
         self.bytes(&value.to_be_bytes());
     }
-    fn var(&mut self, value: &[u8]) -> Result<(), Error> {
+    pub(super) fn var(&mut self, value: &[u8]) -> Result<(), Error> {
         self.u32(u32::try_from(value.len()).map_err(|_| Error::Invalid)?);
         self.bytes(value);
         Ok(())
     }
 }
 
-struct Reader<'a>(&'a [u8]);
+pub(super) struct Reader<'a>(pub(super) &'a [u8]);
 impl<'a> Reader<'a> {
-    fn take(&mut self, n: usize) -> Result<&'a [u8], Error> {
+    pub(super) fn take(&mut self, n: usize) -> Result<&'a [u8], Error> {
         if self.0.len() < n {
             return Err(Error::Crypto);
         }
@@ -95,16 +98,16 @@ impl<'a> Reader<'a> {
         self.0 = tail;
         Ok(head)
     }
-    fn array<const N: usize>(&mut self) -> Result<[u8; N], Error> {
+    pub(super) fn array<const N: usize>(&mut self) -> Result<[u8; N], Error> {
         self.take(N)?.try_into().map_err(|_| Error::Crypto)
     }
-    fn u32(&mut self) -> Result<u32, Error> {
+    pub(super) fn u32(&mut self) -> Result<u32, Error> {
         Ok(u32::from_be_bytes(self.array()?))
     }
-    fn u64(&mut self) -> Result<u64, Error> {
+    pub(super) fn u64(&mut self) -> Result<u64, Error> {
         Ok(u64::from_be_bytes(self.array()?))
     }
-    fn var(&mut self, max: usize) -> Result<&'a [u8], Error> {
+    pub(super) fn var(&mut self, max: usize) -> Result<&'a [u8], Error> {
         let n = usize::try_from(self.u32()?).map_err(|_| Error::Crypto)?;
         if n > max {
             return Err(Error::Crypto);
@@ -113,7 +116,7 @@ impl<'a> Reader<'a> {
     }
 }
 
-fn write_context(w: &mut Writer, c: &GenesisContext) -> Result<(), Error> {
+pub(super) fn write_context(w: &mut Writer, c: &GenesisContext) -> Result<(), Error> {
     w.var(c.community_id.as_bytes())?;
     w.bytes(&c.owner);
     let p = &c.policy;
@@ -162,7 +165,7 @@ fn write_context(w: &mut Writer, c: &GenesisContext) -> Result<(), Error> {
     Ok(())
 }
 
-fn read_context(r: &mut Reader<'_>) -> Result<GenesisContext, Error> {
+pub(super) fn read_context(r: &mut Reader<'_>) -> Result<GenesisContext, Error> {
     let community_id = String::from_utf8(r.var(256)?.to_vec()).map_err(|_| Error::Crypto)?;
     let owner = r.array()?;
     let policy = AccountPolicy {
@@ -221,6 +224,7 @@ fn check_binding(binding: &PendingGenesisBinding) -> Result<(), Error> {
         || binding
             .extended_acceptance_digest
             .is_some_and(|digest| digest == [0; 32] || digest == a.request_digest)
+        || binding.extended_acceptance_digest.is_some() != binding.response.is_some()
         || binding.upper.is_empty()
         || binding.upper.len() > MAX_UPPER
     {
@@ -285,6 +289,9 @@ impl PreparedGenesisProof {
         w.bytes(&binding.acceptance.request_digest);
         w.bytes(&binding.acceptance.operator_key);
         w.bytes(&binding.extended_acceptance_digest.unwrap_or_default());
+        if let Some(response) = &binding.response {
+            response.write(&mut w)?;
+        }
         w.var(&binding.upper)?;
         if w.0.len() + MAGIC.len() + 1 + NONCE + 16 > MAX_PENDING_SEALED {
             return Err(Error::Invalid);
@@ -369,9 +376,14 @@ impl Engine {
             ACCEPTED => Some(digest),
             _ => return Err(Error::Crypto),
         };
+        let response = match state {
+            ACCEPTED => Some(AcceptedResponse::read(&mut r)?),
+            _ => None,
+        };
         let binding = PendingGenesisBinding {
             acceptance,
             extended_acceptance_digest,
+            response,
             upper: r.var(MAX_UPPER)?.to_vec(),
         };
         if !r.0.is_empty() {
@@ -401,21 +413,25 @@ impl Engine {
 }
 
 impl Engine {
-    /// Advance state A to state B after the actual response was verified by the
-    /// upper owner. The stored candidate, outbox and request digest are carried
-    /// over unchanged; only the DISTINCT extended acceptance digest is added.
-    /// State B, a zero digest or one equal to the request digest never advance.
+    /// Advance state A to state B after the actual response arrived. The engine
+    /// itself verifies the full response (operator acceptance, state certificate,
+    /// ancestry rule) against the CURRENT trust, derives the acceptance digest, and
+    /// seals the verified response in B. The candidate, outbox binding and request
+    /// digest are carried over unchanged. B, or any failed check, never advances.
     pub fn advance_pending(
         &self,
         sealed: &SealedPendingGenesis,
-        extended_acceptance_digest: [u8; 32],
+        response: &AcceptedResponse,
+        trust: &ResponseTrust,
         now: u64,
     ) -> Result<SealedPendingGenesis, Error> {
         let (proof, mut binding) = self.restore_pending_genesis(sealed, now)?;
         if binding.extended_acceptance_digest.is_some() {
             return Err(Error::Invalid);
         }
-        binding.extended_acceptance_digest = Some(extended_acceptance_digest);
+        binding.extended_acceptance_digest =
+            Some(proof.verify_response(&binding.acceptance, response, trust)?);
+        binding.response = Some(response.clone());
         proof.seal_state(self, &binding)
     }
 
@@ -431,6 +447,33 @@ impl Engine {
             return Err(Error::Invalid);
         }
         Ok((proof, binding))
+    }
+}
+
+impl Engine {
+    /// Reopen state B before the horizon and re-verify the stored response offline
+    /// under the CURRENT trust (frontier/epoch included). Success yields the opaque
+    /// accepted candidate; the upper owner then rechecks admission, Keys and binding
+    /// around the accepted commit. Any failure releases nothing.
+    pub fn activate_pending(
+        &self,
+        sealed: &SealedPendingGenesis,
+        trust: &ResponseTrust,
+        now: u64,
+    ) -> Result<AcceptedGenesisProof, Error> {
+        let (proof, binding) = self.restore_accepted_pending(sealed, now)?;
+        let response = binding.response.ok_or(Error::Invalid)?;
+        let digest = proof.verify_response(&binding.acceptance, &response, trust)?;
+        if binding.extended_acceptance_digest != Some(digest) {
+            return Err(Error::Crypto);
+        }
+        Ok(AcceptedGenesisProof {
+            accepted_at: response.issuer.accepted_at,
+            candidate: proof,
+            response: Some(response),
+            binding: binding.acceptance,
+            extended_acceptance_digest: digest,
+        })
     }
 }
 

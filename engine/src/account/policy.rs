@@ -96,6 +96,26 @@ impl AccountPolicy {
         Ok(bytes)
     }
 
+    /// The policy fields as czkp's canonical statement encoder consumes them.
+    pub(super) fn fields(&self) -> czkp::account::PolicyFields {
+        czkp::account::PolicyFields {
+            initial_credit: self.initial_credit,
+            maximum_available: self.maximum_available,
+            outgoing_reservation: self.outgoing_reservation,
+            incoming_reservation: self.incoming_reservation,
+            policy_revision: self.policy_revision,
+            policy_valid_from: self.policy_valid_from,
+            policy_valid_until: self.policy_valid_until,
+            newcomer_period: self.newcomer_period,
+            rate_window: self.rate_window,
+            newcomer_admissions: self.newcomer_admissions,
+            maximum_admissions: self.maximum_admissions,
+            refill_period: self.refill_period,
+            refill_units: self.refill_units,
+            abandon_after: self.abandon_after,
+        }
+    }
+
     pub(super) fn digests(&self, community: &Field) -> Result<(Field, Field), Error> {
         let bytes = self.bytes(community)?;
         let mut state = b"cfrm.account-state-policy.v1\0".to_vec();

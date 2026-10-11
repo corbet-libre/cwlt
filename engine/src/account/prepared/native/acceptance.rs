@@ -5,12 +5,9 @@
 //! signature, plus the retained request binding and pinned issuer key. A verified
 //! acceptance releases no custody: the upper current-owner/Frontier verification
 //! and the accepted compare-and-swap remain mandatory and separate.
+use super::response::verify_issuer_material;
 use super::*;
-use crate::account::{hashes, policy::AccountPolicy};
-use ed25519_dalek::{Signature, VerifyingKey};
-
-const ACCEPTANCE_DOMAIN: &[u8] = b"cfrm.account.acceptance.v1\0";
-const STATEMENT_DOMAIN: &[u8] = b"cfrm.account.statement.v2\0";
+use crate::account::policy::AccountPolicy;
 
 /// Retained original request identity and pinned authenticated Balance issuer.
 /// These are data from the pending companion, never a caller verdict.
@@ -37,8 +34,12 @@ pub struct IssuerAcceptance {
 /// operator signature. It is opaque: no installation, serialization or custody
 /// release exists here, and it asserts nothing about the current Frontier.
 pub struct AcceptedGenesisProof {
-    candidate: PreparedGenesisProof,
-    accepted_at: u64,
+    pub(super) candidate: PreparedGenesisProof,
+    pub(super) accepted_at: u64,
+    /// The full verified response; `None` only for the signature-only `accept`.
+    pub(super) response: Option<AcceptedResponse>,
+    pub(super) binding: AcceptanceBinding,
+    pub(super) extended_acceptance_digest: [u8; 32],
 }
 
 impl AcceptedGenesisProof {
@@ -63,33 +64,12 @@ impl AcceptedGenesisProof {
     }
 }
 
-fn append_policy(bytes: &mut Vec<u8>, policy: &AccountPolicy) {
-    for value in [
-        policy.initial_credit,
-        policy.maximum_available,
-        policy.outgoing_reservation,
-        policy.incoming_reservation,
-    ] {
-        bytes.extend_from_slice(&value.to_be_bytes());
-    }
-    for value in [
-        policy.policy_revision,
-        policy.policy_valid_from,
-        policy.policy_valid_until,
-        policy.newcomer_period,
-        policy.rate_window,
-    ] {
-        bytes.extend_from_slice(&value.to_be_bytes());
-    }
-    bytes.extend_from_slice(&policy.newcomer_admissions.to_be_bytes());
-    bytes.extend_from_slice(&policy.maximum_admissions.to_be_bytes());
-    bytes.extend_from_slice(&policy.refill_period.to_be_bytes());
-    bytes.extend_from_slice(&policy.refill_units.to_be_bytes());
-    bytes.extend_from_slice(&policy.abandon_after.to_be_bytes());
-}
-
-/// Exact original fixed statement transcript of a genesis account relation.
-fn statement_bytes(public: &GenesisPublic, policy: &AccountPolicy) -> Result<Vec<u8>, Error> {
+/// The retained genesis statement as czkp's canonical encoder consumes it, after the
+/// holder-side checks that it is a plain genesis within the policy horizon.
+fn statement_fields(
+    public: &GenesisPublic,
+    policy: &AccountPolicy,
+) -> Result<czkp::account::StatementFields, Error> {
     if public.protocol_version != 2
         || !public.genesis
         || public.previous_version != 0
@@ -102,30 +82,22 @@ fn statement_bytes(public: &GenesisPublic, policy: &AccountPolicy) -> Result<Vec
     {
         return Err(Error::Invalid);
     }
-    let mut bytes = STATEMENT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&public.protocol_version.to_be_bytes());
-    for digest in [
-        public.community,
-        public.owner,
-        public.policy_digest,
-        public.enrollment_root,
-    ] {
-        bytes.extend_from_slice(&digest);
-    }
-    bytes.extend_from_slice(&public.now.to_be_bytes());
-    bytes.extend_from_slice(&public.valid_until.to_be_bytes());
-    bytes.push(1);
-    bytes.extend_from_slice(&public.previous_version.to_be_bytes());
-    bytes.extend_from_slice(&public.next_version.to_be_bytes());
-    for digest in [
-        public.previous_state,
-        public.next_state,
-        public.settlement_marker,
-    ] {
-        bytes.extend_from_slice(&digest);
-    }
-    append_policy(&mut bytes, policy);
-    Ok(bytes)
+    Ok(czkp::account::StatementFields {
+        protocol_version: public.protocol_version,
+        community: public.community,
+        owner: public.owner,
+        policy_digest: public.policy_digest,
+        enrollment_root: public.enrollment_root,
+        now: public.now,
+        valid_until: public.valid_until,
+        genesis: public.genesis,
+        previous_version: public.previous_version,
+        next_version: public.next_version,
+        previous_state: public.previous_state,
+        next_state: public.next_state,
+        settlement_marker: public.settlement_marker,
+        policy: policy.fields(),
+    })
 }
 
 /// Original operator acceptance message for the retained statement and scope.
@@ -142,22 +114,18 @@ pub(super) fn acceptance_message(
     {
         return Err(Error::Invalid);
     }
-    let mut bytes = ACCEPTANCE_DOMAIN.to_vec();
-    bytes.extend_from_slice(&binding.request_id);
-    bytes.extend_from_slice(&binding.request_digest);
-    bytes.extend_from_slice(&scope.circuit_digest);
-    bytes.extend_from_slice(&scope.verifying_key_digest);
-    bytes.extend_from_slice(&accepted_at.to_be_bytes());
-    bytes.extend_from_slice(&hashes::digest(&statement_bytes(public, policy)?)?);
-    Ok(bytes)
+    Ok(czkp::account::acceptance_bytes(
+        &binding.request_id,
+        &binding.request_digest,
+        scope,
+        accepted_at,
+        &statement_fields(public, policy)?,
+    ))
 }
 
 /// Maintained strict Ed25519 verification of the pinned operator signature.
 fn verify(message: &[u8], key: &[u8; 32], signature: &[u8; 64]) -> Result<(), Error> {
-    VerifyingKey::from_bytes(key)
-        .map_err(|_| Error::Crypto)?
-        .verify_strict(message, &Signature::from_bytes(signature))
-        .map_err(|_| Error::Crypto)
+    czkp::account::verify_acceptance(message, key, signature).map_err(|_| Error::Crypto)
 }
 
 impl PreparedGenesisProof {
@@ -181,10 +149,42 @@ impl PreparedGenesisProof {
         )?;
         verify(&message, &binding.operator_key, &response.signature)?;
         Ok(AcceptedGenesisProof {
+            extended_acceptance_digest: acceptance_digest(&message, &response.signature)?,
             candidate: self,
             accepted_at,
+            response: None,
+            binding: binding.clone(),
         })
     }
+
+    /// Verify the operator's FULL response without consuming the candidate: the
+    /// acceptance signature over the reconstructed transcript, the issuer's state
+    /// certificate, and the ancestry rule under the current trust. Returns the
+    /// DISTINCT acceptance digest (SHA-256 of the acceptance message and signature).
+    pub(super) fn verify_response(
+        &self,
+        binding: &AcceptanceBinding,
+        response: &AcceptedResponse,
+        trust: &ResponseTrust,
+    ) -> Result<[u8; 32], Error> {
+        let public = self.candidate.genesis_public();
+        let message = acceptance_message(
+            &public,
+            &self.candidate.context.policy,
+            &self.proof.scope,
+            binding,
+            response.issuer.accepted_at,
+        )?;
+        verify(&message, &binding.operator_key, &response.issuer.signature)?;
+        verify_issuer_material(&public, &self.proof.scope, response, trust)?;
+        acceptance_digest(&message, &response.issuer.signature)
+    }
+}
+
+/// SHA-256 of the signed acceptance (message then signature): the same value
+/// the Balance status response uses for an embedded acceptance.
+fn acceptance_digest(message: &[u8], signature: &[u8; 64]) -> Result<[u8; 32], Error> {
+    Ok(czkp::account::acceptance_digest(message, signature))
 }
 
 #[cfg(test)]

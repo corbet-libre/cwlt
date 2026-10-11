@@ -2,7 +2,10 @@
 //! proof bytes it stores, so fabricated bytes exercise the sealing exactly.
 use super::super::acceptance::acceptance_message;
 use super::*;
+use crate::account::hashes;
 use crate::native_prover::Proof;
+use ed25519_dalek::{Signer as _, SigningKey as OperatorKey};
+use p256::ecdsa::{SigningKey as IssuerKey, signature::Signer as _};
 
 fn proven(engine: &Engine, context: &GenesisContext) -> PreparedGenesisProof {
     PreparedGenesisProof {
@@ -26,6 +29,7 @@ fn binding() -> PendingGenesisBinding {
             operator_key: [0x77; 32],
         },
         extended_acceptance_digest: None,
+        response: None,
         upper: vec![4; 20_000],
     }
 }
@@ -125,55 +129,11 @@ fn binding_must_be_complete_distinct_and_bounded() {
         let result = proof.seal_pending(&engine, &changed);
         assert!(result.is_err(), "mutation {index}");
     }
-    // State B never seals directly, and its digest is never zero or the request digest.
+    // A digest without a verified response (or the reverse) never seals.
     let mut direct = binding();
     direct.extended_acceptance_digest = Some([0xE5; 32]);
     assert!(proof.seal_pending(&engine, &direct).is_err());
-    assert!(proof.seal_state(&engine, &direct).is_ok());
-    direct.extended_acceptance_digest = Some([0; 32]);
     assert!(proof.seal_state(&engine, &direct).is_err());
-    direct.extended_acceptance_digest = Some(direct.acceptance.request_digest);
-    assert!(proof.seal_state(&engine, &direct).is_err());
-}
-
-#[test]
-fn state_advances_only_from_sent_to_accepted_and_only_accepted_activates() {
-    let (engine, context) = super::super::tests::fixture();
-    let proof = proven(&engine, &context);
-    let sent = proof.seal_pending(&engine, &binding()).unwrap();
-    // State A reopens (exact outbox) but never activates.
-    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
-    assert!(a.extended_acceptance_digest.is_none());
-    assert!(engine.restore_accepted_pending(&sent, 102).is_err());
-    // Bad digests never advance.
-    assert!(engine.advance_pending(&sent, [0; 32], 102).is_err());
-    assert!(
-        engine
-            .advance_pending(&sent, a.acceptance.request_digest, 102)
-            .is_err()
-    );
-    let accepted = engine.advance_pending(&sent, [0xE5; 32], 102).unwrap();
-    let (reopened, b) = engine.restore_accepted_pending(&accepted, 103).unwrap();
-    // Everything but the added digest is carried over unchanged.
-    assert!(b.acceptance == a.acceptance && b.upper == a.upper);
-    assert_eq!(b.extended_acceptance_digest, Some([0xE5; 32]));
-    assert_eq!(reopened.proof(), proof.proof());
-    assert_eq!(
-        reopened.public_genesis().next_state,
-        proof.public_genesis().next_state
-    );
-    // No skip, no re-advance, no downgrade: B cannot advance and has no path back to A.
-    assert!(engine.advance_pending(&accepted, [0xE6; 32], 103).is_err());
-    // The state tag is authenticated: swapping it makes either ciphertext refuse.
-    for (wire, tag) in [(&sent, 2u8), (&accepted, 1u8)] {
-        let mut bytes = wire.as_bytes().to_vec();
-        bytes[MAGIC.len()] = tag;
-        let swapped = SealedPendingGenesis::from_bytes(&bytes).unwrap();
-        assert!(engine.restore_pending_genesis(&swapped, 103).is_err());
-    }
-    // State A expires at the original horizon exactly like before.
-    assert!(engine.advance_pending(&sent, [0xE5; 32], 200).is_err());
-    assert!(engine.restore_accepted_pending(&accepted, 200).is_err());
 }
 
 #[test]
@@ -211,3 +171,249 @@ fn restored_candidate_still_requires_the_exact_operator_acceptance() {
     let accepted = reopened.accept(&restored.acceptance, &response).unwrap();
     assert_eq!(accepted.accepted_at(), 150);
 }
+
+fn issuer() -> IssuerKey {
+    IssuerKey::from_slice(&[11; 32]).unwrap()
+}
+
+fn issuer_public(key: &IssuerKey) -> [u8; 64] {
+    key.verifying_key().to_sec1_point(false).as_bytes()[1..]
+        .try_into()
+        .unwrap()
+}
+
+fn operator() -> OperatorKey {
+    OperatorKey::from_bytes(&[5; 32])
+}
+
+fn real_binding() -> PendingGenesisBinding {
+    let mut value = binding();
+    value.acceptance.operator_key = operator().verifying_key().to_bytes();
+    value
+}
+
+fn trust(frontier: Option<Frontier>) -> ResponseTrust {
+    ResponseTrust {
+        certificate_key: issuer_public(&issuer()),
+        frontier,
+    }
+}
+
+fn frontier() -> Frontier {
+    Frontier {
+        epoch: 3,
+        root: [5; 32],
+    }
+}
+
+/// A genuine issuer response for the candidate, signed with test keys.
+fn response(
+    proof: &PreparedGenesisProof,
+    binding: &AcceptanceBinding,
+    at: u64,
+    with_frontier: bool,
+) -> AcceptedResponse {
+    let public = proof.public_genesis();
+    let message =
+        acceptance_message(&public, &proof.context().policy, proof.scope(), binding, at).unwrap();
+    // The issuer signs the bytes czkp encodes, exactly as the real issuer does.
+    let certificate: p256::ecdsa::Signature =
+        issuer().sign(&super::super::response::accepted_state(&public, proof.scope(), at).bytes());
+    let ancestry = with_frontier.then(|| {
+        let mut ancestry = AncestryResponse {
+            epoch: 3,
+            root: [5; 32],
+            frozen_leaf: [6; 32],
+            signature: [0; 64],
+            record: vec![1, 2, 3],
+        };
+        let bytes = super::super::response::ancestry_body(&public, proof.scope(), &ancestry, at)
+            .bytes()
+            .unwrap();
+        let signature: p256::ecdsa::Signature = issuer().sign(&bytes);
+        ancestry.signature = signature.to_bytes().into();
+        ancestry
+    });
+    AcceptedResponse {
+        issuer: IssuerAcceptance {
+            accepted_at: at,
+            signature: operator().sign(&message).to_bytes(),
+        },
+        certificate: certificate.to_bytes().into(),
+        ancestry,
+    }
+}
+
+#[test]
+fn full_response_advances_sent_to_accepted_and_activates_offline() {
+    for with_frontier in [false, true] {
+        let (engine, context) = super::super::tests::fixture();
+        let proof = proven(&engine, &context);
+        let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+        let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+        assert!(a.extended_acceptance_digest.is_none() && a.response.is_none());
+        // State A never activates.
+        let live = trust(with_frontier.then(frontier));
+        assert!(engine.activate_pending(&sent, &live, 102).is_err());
+        let good = response(&proof, &a.acceptance, 150, with_frontier);
+        let accepted = engine.advance_pending(&sent, &good, &live, 102).unwrap();
+        let (reopened, b) = engine.restore_accepted_pending(&accepted, 103).unwrap();
+        // Everything but the verified response and its derived digest is unchanged.
+        assert!(b.acceptance == a.acceptance && b.upper == a.upper);
+        assert!(b.response.as_ref() == Some(&good));
+        assert_eq!(reopened.proof(), proof.proof());
+        // The digest is derived by the engine: SHA-256(acceptance message || signature).
+        let message = acceptance_message(
+            &proof.public_genesis(),
+            &context.policy,
+            proof.scope(),
+            &a.acceptance,
+            150,
+        )
+        .unwrap();
+        assert_eq!(
+            b.extended_acceptance_digest,
+            Some(hashes::digest(&[message, good.issuer.signature.to_vec()].concat()).unwrap())
+        );
+        // Activation re-verifies the stored response offline, with no re-send.
+        let activated = engine.activate_pending(&accepted, &live, 104).unwrap();
+        assert_eq!(activated.accepted_at(), 150);
+        // No second advance, and the horizon still bounds both states.
+        assert!(
+            engine
+                .advance_pending(&accepted, &good, &live, 103)
+                .is_err()
+        );
+        assert!(engine.activate_pending(&accepted, &live, 200).is_err());
+        assert!(engine.advance_pending(&sent, &good, &live, 200).is_err());
+    }
+}
+
+#[test]
+fn a_response_that_fails_any_check_never_advances_or_activates() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    let live = trust(Some(frontier()));
+    assert!(engine.advance_pending(&sent, &good, &live, 102).is_ok());
+    let advance = |response: &AcceptedResponse, trust: &ResponseTrust| {
+        engine.advance_pending(&sent, response, trust, 102)
+    };
+    // Operator signature, time, certificate and ancestry tampering.
+    let mut bad = good.clone();
+    bad.issuer.signature[0] ^= 1;
+    assert!(advance(&bad, &live).is_err());
+    let mut bad = good.clone();
+    bad.issuer.accepted_at = 151;
+    assert!(advance(&bad, &live).is_err());
+    let mut bad = good.clone();
+    bad.certificate[0] ^= 1;
+    assert!(advance(&bad, &live).is_err());
+    let mut bad = good.clone();
+    bad.ancestry.as_mut().unwrap().signature[0] ^= 1;
+    assert!(advance(&bad, &live).is_err());
+    let mut bad = good.clone();
+    bad.ancestry.as_mut().unwrap().frozen_leaf[0] ^= 1;
+    assert!(advance(&bad, &live).is_err());
+    // The ancestry rule: mandatory with a frontier, forbidden without one.
+    let mut bad = good.clone();
+    bad.ancestry = None;
+    assert!(advance(&bad, &live).is_err());
+    assert!(advance(&good, &trust(None)).is_err());
+    // Wrong frontier epoch or root, wrong issuer key.
+    for changed in [
+        Frontier {
+            epoch: 4,
+            root: [5; 32],
+        },
+        Frontier {
+            epoch: 3,
+            root: [6; 32],
+        },
+    ] {
+        assert!(advance(&good, &trust(Some(changed))).is_err());
+    }
+    let mut wrong_key = live.clone();
+    wrong_key.certificate_key[0] ^= 1;
+    assert!(advance(&good, &wrong_key).is_err());
+    // Activation uses the CURRENT trust: a changed frontier refuses the stored response.
+    let accepted = engine.advance_pending(&sent, &good, &live, 102).unwrap();
+    assert!(
+        engine
+            .activate_pending(&accepted, &trust(None), 103)
+            .is_err()
+    );
+    let moved = Frontier {
+        epoch: 3,
+        root: [9; 32],
+    };
+    assert!(
+        engine
+            .activate_pending(&accepted, &trust(Some(moved)), 103)
+            .is_err()
+    );
+    assert!(engine.activate_pending(&accepted, &live, 103).is_ok());
+}
+
+#[test]
+fn accepted_record_is_engine_written_distinct_and_restores_the_accepted_commitment() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    let live = trust(Some(frontier()));
+    let accepted = engine.advance_pending(&sent, &good, &live, 102).unwrap();
+    let activated = engine.activate_pending(&accepted, &live, 103).unwrap();
+    let sealed = activated.seal_account(&engine).unwrap();
+    let wire = SealedAcceptedAccount::from_bytes(sealed.as_bytes()).unwrap();
+    let account = engine.restore_accepted_account(&wire).unwrap();
+    assert_eq!(account.state(), proof.public_genesis().next_state);
+    assert_eq!(account.version(), 0);
+    assert_eq!(account.accepted_at(), 150);
+    assert!(account.response() == &good);
+    assert_eq!(
+        account.extended_acceptance_digest(),
+        activated.extended_acceptance_digest()
+    );
+    // Kinds are purpose-separated: neither pending state nor the key capsule is an
+    // accepted record, and the accepted record is neither pending state.
+    assert!(SealedAcceptedAccount::from_bytes(sent.as_bytes()).is_err());
+    assert!(SealedAcceptedAccount::from_bytes(accepted.as_bytes()).is_err());
+    assert!(SealedPendingGenesis::from_bytes(sealed.as_bytes()).is_err());
+    let key = engine.prepare_account_key("community", [1; 32]).unwrap();
+    assert!(SealedAcceptedAccount::from_bytes(key.seal().unwrap().as_bytes()).is_err());
+    // Foreign engines and tampering never restore it.
+    let other =
+        Engine::from_seed_and_sealing_key(&mut [7; 32], &mut [6; 32], b"community").unwrap();
+    assert!(other.restore_accepted_account(&wire).is_err());
+    for index in [MAGIC_LEN, MAGIC_LEN + 30, sealed.as_bytes().len() - 1] {
+        let mut bytes = sealed.as_bytes().to_vec();
+        bytes[index] ^= 1;
+        let tampered = SealedAcceptedAccount::from_bytes(&bytes).unwrap();
+        assert!(engine.restore_accepted_account(&tampered).is_err());
+    }
+    // Only a candidate carrying the full verified response can be sealed: the
+    // signature-only path has no response, and there is no public constructor.
+    let signature_only = {
+        let message = acceptance_message(
+            &proof.public_genesis(),
+            &context.policy,
+            proof.scope(),
+            &a.acceptance,
+            150,
+        )
+        .unwrap();
+        let response = IssuerAcceptance {
+            accepted_at: 150,
+            signature: operator().sign(&message).to_bytes(),
+        };
+        let (fresh, _) = engine.restore_pending_genesis(&sent, 102).unwrap();
+        fresh.accept(&a.acceptance, &response).unwrap()
+    };
+    assert!(signature_only.seal_account(&engine).is_err());
+}
+
+const MAGIC_LEN: usize = b"cwlt.account-accepted.v1\0".len();

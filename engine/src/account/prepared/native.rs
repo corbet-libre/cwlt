@@ -4,9 +4,13 @@ use crate::native_prover::{NativeProver, Proof};
 use serde::{Serialize, Serializer};
 use std::time::Instant;
 mod acceptance;
+mod accepted;
 mod pending;
+mod response;
 pub use acceptance::{AcceptanceBinding, AcceptedGenesisProof, IssuerAcceptance};
+pub use accepted::{AcceptedAccount, MAX_ACCEPTED_SEALED, SealedAcceptedAccount};
 pub use pending::{MAX_PENDING_SEALED, PendingGenesisBinding, SealedPendingGenesis};
+pub use response::{AcceptedResponse, AncestryResponse, Frontier, ResponseTrust};
 #[cfg(test)]
 mod tests;
 
@@ -48,6 +52,10 @@ pub struct GenesisPublic {
     pub settlement_marker: [u8; 32],
 }
 impl PreparedGenesisProof {
+    /// The explicit public context this candidate was prepared and proven under.
+    pub fn context(&self) -> &GenesisContext {
+        &self.candidate.context
+    }
     /// Project only the original public statement that this candidate proved.
     /// No witness, opening, fresh authority or sending privilege is returned.
     pub fn public_genesis(&self) -> GenesisPublic {
