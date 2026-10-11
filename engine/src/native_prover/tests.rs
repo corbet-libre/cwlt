@@ -26,22 +26,22 @@ pub(crate) fn config() -> NativeProverConfig {
     let manifest = read(&directory.join("manifest.json"), 65_536);
     pin(
         &manifest,
-        "f9481cd5933dff2a560ef08f2d710304c4a9fc6dee97c776176a6032669012ee",
+        "81aec00155f28e7b1d064adeb893593e4bedae01bd8334f80bf0c65ce91c8efc",
     );
-    let receipt = read(&directory.join("worker.json"), 65_536);
+    let receipt = read(&directory.join("worker-receipt.json"), 65_536);
     pin(
         &receipt,
-        "7270351d40c1ed49b1499ec82e59449e6d28ca715d5590485dee56e7ef757ff2",
+        "0b2c57f19c1440aaa55b62b3f27a57c96b8baec38a266ab291e719cc9a3b638d",
     );
     let circuit = read(&directory.join("circuits.json"), MAX_CIRCUIT);
     pin(
         &circuit,
-        "49b022b8356f0b331bcb5d8b2c86c14c619219d8e597c4abbd386ce98318b5e4",
+        "b1bb892081b56e441211370c24e8f4371d053115e79e9a0011082131c79d375c",
     );
     let verification_key = read(&directory.join("keys.json"), MAX_PROOF);
     pin(
         &verification_key,
-        "e1533badd256e63b7817018ba59a5cd822f3e936a723d7f31bd85a49a6190ae0",
+        "3b0c627844f05d0c9f295a987a4125d21dfb693498614d11f09a1119c5c09993",
     );
     let srs_g1 = read(&directory.join("setup/g1.dat"), MAX_SETUP);
     pin(

@@ -90,7 +90,7 @@ fn original_update_proves_genesis_and_retains_same_private_candidate_without_ado
     assert!(!proof.proof().is_empty());
     assert_eq!(
         proof.scope().circuit_digest,
-        czkp::decode("49b022b8356f0b331bcb5d8b2c86c14c619219d8e597c4abbd386ce98318b5e4").unwrap()
+        czkp::decode("b1bb892081b56e441211370c24e8f4371d053115e79e9a0011082131c79d375c").unwrap()
     );
     assert!(
         proof.candidate.opening.blind == *opening,
