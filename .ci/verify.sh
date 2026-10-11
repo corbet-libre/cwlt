@@ -15,8 +15,9 @@ python3 .github/check-first-party.py --metadata dependency-metadata.json
 python3 -B .github/test-engine-identity.py
 rustc --version
 cargo fmt --check || { cargo fmt; git diff > formatting.patch; exit 1; }
-cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo test --locked --workspace --all-features
+# Reuse the resolved original verifier owner's pinned SDK environment unchanged.
+python3 -B .ci/import-native-prover-sdk.py
+nix-shell native-prover-owner/check-shell.nix --run 'set -euo pipefail; export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }${BB_NATIVE_RUSTFLAGS:?Missing original native loader configuration}"; cargo clippy --locked --workspace --all-targets --all-features -- -D warnings; cargo test --locked --workspace --all-features'
 wasm-pack build --target web --release
 node tests/wasm.mjs
 wasm-pack test --node --all-features
