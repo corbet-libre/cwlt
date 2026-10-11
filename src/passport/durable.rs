@@ -2,6 +2,9 @@
 use super::*;
 use cwst::{Change, Output, Store, backend::Backend};
 
+mod initial;
+pub use initial::InitialCheckpoint;
+
 const OWNER: &str = "cwlt.passport";
 const KEY: &[u8] = b"holder.v1";
 

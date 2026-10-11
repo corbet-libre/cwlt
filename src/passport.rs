@@ -21,7 +21,7 @@ pub use cpsd::{
 pub struct Holder(cpsd::OpaqueHolder);
 
 mod durable;
-pub use durable::{DurableHolder, DurableSession, Pending, PersistenceError};
+pub use durable::{DurableHolder, DurableSession, InitialCheckpoint, Pending, PersistenceError};
 
 impl Holder {
     /// Consume the concrete freshly authorized Keys seed capability. Neither the
