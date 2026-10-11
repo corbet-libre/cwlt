@@ -7,7 +7,10 @@ export RUNNER_TEMP="${RUNNER_TEMP:-$(mktemp -d)}"
 export GITHUB_PATH="${GITHUB_PATH:-$RUNNER_TEMP/github_path}"
 touch "$GITHUB_PATH"
 
-python3 .github/check-first-party.py
+python3 .github/check-first-party.py --manifest-only
+cargo metadata --locked --all-features --format-version 1 > dependency-metadata.json
+python3 .github/check-first-party.py --metadata dependency-metadata.json
+python3 -B .github/test-engine-identity.py
 rustc --version
 cargo fmt --check || { cargo fmt; git diff > formatting.patch; exit 1; }
 cargo clippy --locked --all-targets --all-features -- -D warnings

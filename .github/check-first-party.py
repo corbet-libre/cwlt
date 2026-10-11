@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Require approved owner branches and one resolved revision per first-party crate."""
 import re
+import argparse
+import json
 import subprocess
-import sys
 import tomllib
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from engine_identity import verified_engine_pair
 
 FIRST_PARTY = re.compile(r"^(?:git\+)?https://git\.corbet\.ch/(?:corbet-(?:foss|libs)|cmtymeet)/")
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -13,6 +15,7 @@ SHA = re.compile(r"^[0-9a-f]{40}$")
 V01_OWNERS = {
     'https://git.corbet.ch/corbet-foss/ckmg.git': 'ckmg',
     'https://git.corbet.ch/corbet-foss/cwst.git': 'cwst',
+    'https://git.corbet.ch/corbet-foss/cdht.git': 'cdht',
 }
 
 
@@ -20,10 +23,17 @@ def owner_branch(repository, package):
     return 'v01' if V01_OWNERS.get(repository) == package else 'main'
 
 
-def check_lock(packages):
+def check_lock(packages, engine_pair=None):
     names = {p['name'] for p in packages if FIRST_PARTY.match(p.get('source', ''))}
     for name in names:
         entries = [p for p in packages if p['name'] == name]
+        if name == 'cwlt-engine' and engine_pair is not None:
+            version, selected = engine_pair
+            local = [p for p in entries if 'source' not in p]
+            resolved = [p for p in entries if p.get('source') == selected]
+            if len(entries) != 2 or len(local) != 1 or len(resolved) != 1 or any(p['version'] != version for p in entries):
+                raise ValueError('Engine lock differs from verified metadata')
+            entries = [p for p in entries if p.get('source')]
         if len(entries) != 1:
             raise ValueError(f'Duplicate first-party crate: {name}')
         source = urlsplit(entries[0]['source'].removeprefix('git+'))
@@ -93,13 +103,26 @@ def self_test():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--self-test', action='store_true')
+    parser.add_argument('--manifest-only', action='store_true')
+    parser.add_argument('--metadata', type=Path)
+    options = parser.parse_args()
+    if options.manifest_only and options.metadata:
+        parser.error('Metadata and manifest-only selections are exclusive')
     self_test()
-    if '--self-test' not in sys.argv:
+    if not options.self_test:
+        engine_pair = None
+        if options.metadata:
+            engine_pair = verified_engine_pair(json.loads(options.metadata.read_text()), Path.cwd())
         paths = subprocess.check_output(['git', 'ls-files', '-z'], text=True).split('\0')
         for name in paths:
             path = Path(name)
             if path.name == 'Cargo.toml':
                 check_manifest(tomllib.loads(path.read_text()))
-            elif path.name == 'Cargo.lock':
-                check_lock(tomllib.loads(path.read_text())['package'])
-        print('First-party declarations follow approved owner branches; locked crate revisions are unique')
+            elif path.name == 'Cargo.lock' and not options.manifest_only:
+                check_lock(tomllib.loads(path.read_text())['package'], engine_pair)
+        if options.manifest_only:
+            print('First-party declarations follow approved owner branches')
+        else:
+            print('First-party declarations follow approved owner branches; locked crate revisions are unique')

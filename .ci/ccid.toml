@@ -5,7 +5,7 @@ project = "cwlt"
 kind = "commands"
 commands = [["bash", ".ci/verify.sh"]]
 cache_tools = [["rustc", "-vV"], ["cargo", "--version"], ["wasm-pack", "--version"], ["node", "--version"], ["python3", "--version"], ["rustup", "run", "nightly", "rustc", "-vV"], ["rustup", "run", "nightly", "cargo", "llvm-cov", "--version"]]
-cache_outputs = ["coverage.json", "coverage.lcov", "coverage.txt"]
+cache_outputs = ["coverage.json", "coverage.lcov", "coverage.txt", "dependency-metadata.json"]
 
 [checks.advisories]
 kind = "commands"
