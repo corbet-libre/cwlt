@@ -4,6 +4,7 @@
 use super::Field;
 use super::hashes;
 use crate::Error;
+#[cfg(test)]
 use czkp::poseidon::integer;
 use std::collections::BTreeMap;
 use zeroize::Zeroize;
