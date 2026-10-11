@@ -137,6 +137,13 @@ pub(super) fn prove(
             || !status.is_some_and(|s| s.success())
             || output.len() > MAX_PROOF * 5 + 32768
         {
+            // Tests may identify only the trusted worker's fixed process stage.
+            // All stderr, private input and unverified output remain discarded.
+            #[cfg(test)]
+            eprintln!(
+                "owned worker refusal exit code: {:?}",
+                status.and_then(|s| s.code())
+            );
             return Err(Error::Crypto);
         }
         serde_json::from_slice(&output).map_err(|_| Error::Crypto)

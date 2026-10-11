@@ -52,7 +52,8 @@ fn settings() -> ProofSystemSettings {
     }
 }
 
-fn prove(mut request: Request) -> Result<Proof, Error> {
+fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
+    *stage = 66; // Original bounds and complete-group identity.
     let input = Zeroizing::new(std::mem::take(&mut request.input));
     if request.circuit.is_empty()
         || request.circuit.len() > MAX_CIRCUIT
@@ -73,6 +74,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     {
         return Err(Error::Invalid);
     }
+    *stage = 67; // Fixed original update artifact and ABI.
     #[derive(Deserialize)]
     struct Group {
         update: ProgramArtifact,
@@ -96,6 +98,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
         .abi
         .encode(&inputs, None)
         .map_err(|_| Error::Invalid)?;
+    *stage = 68; // Maintained ACVM execution, with all foreign calls refused.
     let stack = nargo::ops::execute_program(
         &artifact.bytecode,
         initial,
@@ -105,6 +108,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     .map_err(|_| Error::Crypto)?;
     // Explicit original compact MessagePack; ambient format variables cannot
     // change witness encoding. The compressed private buffer never reaches disk.
+    *stage = 69; // Maintained compact witness encoding.
     let witness = Zeroizing::new(
         stack
             .serialize_with_format(SerializationFormat::MsgpackCompact)
@@ -113,6 +117,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     if witness.len() > MAX_FRAME {
         return Err(Error::Invalid);
     }
+    *stage = 70; // Unchanged original compressed bytecode.
     #[derive(Deserialize)]
     struct Encoded {
         bytecode: String,
@@ -128,10 +133,13 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     let bytecode = BASE64
         .decode(encoded.bytecode.as_bytes())
         .map_err(|_| Error::Invalid)?;
+    *stage = 71; // Maintained backend construction.
     let backend = FfiBackend::new().map_err(|_| Error::Crypto)?;
     let mut api = BarretenbergApi::new(backend);
+    *stage = 72; // Authenticated original full setup.
     api.srs_init_srs(&request.srs_g1, request.num_points, &request.srs_g2)
         .map_err(|_| Error::Crypto)?;
+    *stage = 73; // Maintained proving with the original VK and settings.
     let response = api
         .circuit_prove(
             CircuitInput {
@@ -143,6 +151,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
             settings(),
         )
         .map_err(|_| Error::Crypto)?;
+    *stage = 74; // Original result framing and VK equality.
     if response.vk.bytes != verification_key
         || response.public_inputs.len() != 345
         || response.proof.is_empty()
@@ -151,6 +160,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     {
         return Err(Error::Crypto);
     }
+    *stage = 75; // Exact original ordered public fields.
     let public: Vec<[u8; 32]> = response
         .public_inputs
         .iter()
@@ -162,6 +172,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     for field in &public {
         czkp::field(field, false).map_err(|_| Error::Crypto)?;
     }
+    *stage = 76; // Maintained local verification against that same original VK.
     let verified = api
         .circuit_verify(
             &verification_key,
@@ -174,6 +185,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
         return Err(Error::Crypto);
     }
     let proof = response.proof.into_iter().flatten().collect();
+    *stage = 77; // Backend teardown.
     api.destroy().map_err(|_| Error::Crypto)?;
     Ok(Proof {
         scope: request.scope,
@@ -182,7 +194,8 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     })
 }
 
-pub(super) fn run() -> Result<(), Error> {
+fn run_at(stage: &mut u8) -> Result<(), Error> {
+    *stage = 64; // Owned process resource limits.
     let memory: u64 = std::env::var("CWLT_NATIVE_MEMORY_MIB")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -196,6 +209,7 @@ pub(super) fn run() -> Result<(), Error> {
     rlimit::Resource::CORE
         .set(0, 0)
         .map_err(|_| Error::Crypto)?;
+    *stage = 65; // Bounded private request decoding.
     let mut bytes = Zeroizing::new(Vec::new());
     std::io::stdin()
         .lock()
@@ -207,8 +221,14 @@ pub(super) fn run() -> Result<(), Error> {
     }
     let request = serde_json::from_slice(&bytes).map_err(|_| Error::Invalid)?;
     drop(bytes);
-    let result = prove(request)?;
+    let result = prove(request, stage)?;
+    *stage = 78; // Public proof output only.
     let mut stdout = std::io::stdout().lock();
     serde_json::to_writer(&mut stdout, &result).map_err(|_| Error::Crypto)?;
     stdout.write_all(b"\n").map_err(|_| Error::Crypto)
+}
+
+pub(super) fn run() -> Result<(), super::WorkerFailure> {
+    let mut stage = 64;
+    run_at(&mut stage).map_err(|_| super::WorkerFailure { code: stage })
 }

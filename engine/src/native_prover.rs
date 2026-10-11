@@ -213,8 +213,22 @@ pub(crate) fn sha(bytes: &[u8]) -> Result<[u8; 32], Error> {
     czkp::decode(&czkp::digest(bytes)).map_err(|_| Error::Crypto)
 }
 
-/// Execute only the owned worker entry point. It imposes finite memory/core limits
-/// and emits a locally verified public proof or exits with a coarse refusal.
-pub fn run_worker() -> Result<(), Error> {
+/// Fixed nonsecret failure stage of the dedicated owned worker. It contains no
+/// witness, library error, diagnostic text or private input.
+pub struct WorkerFailure {
+    code: u8,
+}
+impl WorkerFailure {
+    /// Reserved process exit code identifying only a fixed execution stage.
+    /// These codes are diagnostics, never proof or owner acceptance.
+    pub fn exit_code(&self) -> i32 {
+        i32::from(self.code)
+    }
+}
+
+/// Execute only the owned worker entry point with finite memory/core limits.
+/// It emits a locally verified public proof or a fixed nonsecret failure stage.
+/// The parent prover continues to expose only its coarse authentication error.
+pub fn run_worker() -> Result<(), WorkerFailure> {
     worker::run()
 }
