@@ -14,6 +14,8 @@ use std::{
 };
 use zeroize::Zeroizing;
 mod abi;
+#[cfg(test)]
+pub(crate) mod tests;
 mod transport;
 mod worker;
 
@@ -33,9 +35,9 @@ pub struct NativeProverConfig {
     pub executable_digest: [u8; 32],
     /// Original authenticated circuit and verification-key identities.
     pub scope: ProofScope,
-    /// Exact original full compiled circuit JSON, including its ABI and bytecode.
+    /// Exact original whole circuit-group JSON; only its fixed update is used.
     pub circuit: Vec<u8>,
-    /// Original verification-key bytes, never replaced by a prover-generated key.
+    /// Exact original whole verification-key group JSON; only update is decoded.
     pub verification_key: Vec<u8>,
     /// Full authenticated compressed G1 setup required by the original circuit.
     pub srs_g1: Vec<u8>,
@@ -116,7 +118,13 @@ impl NativeProver {
             noir_version: String,
             abi: Abi,
         }
-        let header: Header = serde_json::from_slice(&config.circuit).map_err(|_| Error::Invalid)?;
+        #[derive(Deserialize)]
+        struct Group {
+            update: Header,
+        }
+        let Group { update: header } =
+            serde_json::from_slice(&config.circuit).map_err(|_| Error::Invalid)?;
+        update_key(&config.verification_key)?;
         if header.noir_version != "1.0.0-beta.26"
             && !header.noir_version.starts_with("1.0.0-beta.26+")
         {
@@ -186,6 +194,21 @@ pub(crate) struct Proof {
     pub public_inputs: Vec<[u8; 32]>,
     pub proof: Vec<u8>,
 }
+pub(crate) fn update_key(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+    #[derive(Deserialize)]
+    struct Group {
+        update: String,
+    }
+    let group: Group = serde_json::from_slice(bytes).map_err(|_| Error::Invalid)?;
+    let key = data_encoding::HEXLOWER
+        .decode(group.update.as_bytes())
+        .map_err(|_| Error::Invalid)?;
+    if key.is_empty() || key.len() > MAX_PROOF {
+        return Err(Error::Invalid);
+    }
+    Ok(key)
+}
+
 pub(crate) fn sha(bytes: &[u8]) -> Result<[u8; 32], Error> {
     czkp::decode(&czkp::digest(bytes)).map_err(|_| Error::Crypto)
 }

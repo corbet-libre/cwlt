@@ -3,6 +3,8 @@ use super::*;
 use crate::native_prover::{NativeProver, Proof};
 use serde::{Serialize, Serializer};
 use std::time::Instant;
+#[cfg(test)]
+mod tests;
 
 /// Locally verified proof data. It grants no enrollment, accepted Frontier, Keys
 /// authority, Store receipt or operator acceptance; those joins remain separate.

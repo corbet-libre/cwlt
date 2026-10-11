@@ -104,12 +104,15 @@ Memory test storage does not establish disk durability or production admission.
 The optional native-only `native-prover` engine feature consumes the opaque
 prepared genesis candidate through the original typed Noir ABI and maintained
 ACVM and Barretenberg owners. Trusted runtime configuration fixes the complete
-compiled circuit, original verification key, full authenticated setup, owned
+whole circuit and verification-key JSON groups, full authenticated setup, owned
 worker executable digest and finite memory, thread, capacity and call bounds.
 The original extension artifact contract uses 32 compressed bytes per G1 point,
 complete 4 MiB chunks and a 128 MiB bound on its shared setup. The separate
 standalone account circuit has a nine-chunk contract; it cannot substitute for
 the extension-update circuit or its original shared artifact group.
+The whole original group digests remain the proof scope. Only the fixed original
+update ABI, unchanged compressed bytecode and decoded update key are used;
+individual program or key digests cannot substitute for the original group.
 The worker rejects foreign calls and locally verifies the produced proof against
 the same verification key and ordered public inputs before returning public data.
 

@@ -17,7 +17,9 @@ rustc --version
 cargo fmt --check || { cargo fmt; git diff > formatting.patch; exit 1; }
 # Reuse the resolved original verifier owner's pinned SDK environment unchanged.
 python3 -B .ci/import-native-prover-sdk.py
-nix-shell native-prover-owner/check-shell.nix --run 'set -euo pipefail; export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }${BB_NATIVE_RUSTFLAGS:?Missing original native loader configuration}"; cargo clippy --locked --workspace --all-targets --all-features -- -D warnings; cargo test --locked --workspace --all-features'
+CWLT_NATIVE_PROVER_FIXTURE="$(python3 -B .ci/prepare-native-prover-fixture.py)"
+export CWLT_NATIVE_PROVER_FIXTURE
+nix-shell native-prover-owner/check-shell.nix --run 'set -euo pipefail; export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }${BB_NATIVE_RUSTFLAGS:?Missing original native loader configuration}"; cargo clippy --locked --workspace --all-targets --all-features -- -D warnings; cargo build --manifest-path engine/Cargo.toml --locked --features native-prover --example cwlt-account-worker --message-format=json > native-prover-build.json; CWLT_NATIVE_PROVER_WORKER="$(python3 -B .ci/native-prover-worker-path.py)"; export CWLT_NATIVE_PROVER_WORKER; cargo test --locked --workspace --all-features'
 wasm-pack build --target web --release
 node tests/wasm.mjs
 wasm-pack test --node --all-features

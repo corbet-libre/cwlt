@@ -1,5 +1,7 @@
 //! Original maintained ABI, ACVM and BB execution in one disposable process.
-use super::{Error, MAX_CIRCUIT, MAX_FRAME, MAX_POINTS, MAX_PROOF, MAX_SETUP, Proof, abi, sha};
+use super::{
+    Error, MAX_CIRCUIT, MAX_FRAME, MAX_POINTS, MAX_PROOF, MAX_SETUP, Proof, abi, sha, update_key,
+};
 use acvm::{
     FieldElement,
     acir::{SerializationFormat, brillig::ForeignCallResult},
@@ -71,8 +73,13 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     {
         return Err(Error::Invalid);
     }
-    let artifact: ProgramArtifact =
+    #[derive(Deserialize)]
+    struct Group {
+        update: ProgramArtifact,
+    }
+    let Group { update: artifact } =
         serde_json::from_slice(&request.circuit).map_err(|_| Error::Invalid)?;
+    let verification_key = update_key(&request.verification_key)?;
     if artifact.noir_version != "1.0.0-beta.26"
         && !artifact.noir_version.starts_with("1.0.0-beta.26+")
     {
@@ -110,7 +117,12 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     struct Encoded {
         bytecode: String,
     }
-    let encoded: Encoded = serde_json::from_slice(&request.circuit).map_err(|_| Error::Invalid)?;
+    #[derive(Deserialize)]
+    struct EncodedGroup {
+        update: Encoded,
+    }
+    let EncodedGroup { update: encoded } =
+        serde_json::from_slice(&request.circuit).map_err(|_| Error::Invalid)?;
     // Pass the unchanged original compressed bytecode, never serialize a new
     // circuit or compute a substitute verification key.
     let bytecode = BASE64
@@ -125,13 +137,13 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
             CircuitInput {
                 name: "account-genesis".into(),
                 bytecode,
-                verification_key: request.verification_key.clone(),
+                verification_key: verification_key.clone(),
             },
             &witness,
             settings(),
         )
         .map_err(|_| Error::Crypto)?;
-    if response.vk.bytes != request.verification_key
+    if response.vk.bytes != verification_key
         || response.public_inputs.len() != 345
         || response.proof.is_empty()
         || response.proof.len() > MAX_PROOF / 32
@@ -152,7 +164,7 @@ fn prove(mut request: Request) -> Result<Proof, Error> {
     }
     let verified = api
         .circuit_verify(
-            &request.verification_key,
+            &verification_key,
             response.public_inputs,
             response.proof.clone(),
             settings(),
