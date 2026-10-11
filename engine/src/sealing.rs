@@ -74,7 +74,7 @@ impl Engine {
             .sealing
             .cipher
             .encrypt(
-                XNonce::from_slice(&nonce),
+                &XNonce::from(nonce),
                 Payload {
                     msg: plaintext.as_ref(),
                     aad: &self.sealing.context,
@@ -96,11 +96,14 @@ impl Engine {
     /// Same-key but wrong-root state is refused; no silent genesis reset or merge.
     pub fn restored(&self, sealed: &Sealed) -> Result<Self, Error> {
         let offset = MAGIC.len();
+        let nonce: [u8; NONCE] = sealed.0[offset..offset + NONCE]
+            .try_into()
+            .map_err(|_| Error::Crypto)?;
         let plaintext = Zeroizing::new(
             self.sealing
                 .cipher
                 .decrypt(
-                    XNonce::from_slice(&sealed.0[offset..offset + NONCE]),
+                    &XNonce::from(nonce),
                     Payload {
                         msg: &sealed.0[offset + NONCE..],
                         aad: &self.sealing.context,

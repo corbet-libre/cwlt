@@ -55,7 +55,7 @@ impl State {
             || record.presentation_key != presentation_key(&self.public_key())
             || proof.is_empty()
             || proof.len() > 8 * 1024 * 1024
-            || proof.len() % 2 != 0
+            || !proof.len().is_multiple_of(2)
             || !proof.bytes().all(|b| b.is_ascii_hexdigit())
         {
             return Err(Error::Invalid);

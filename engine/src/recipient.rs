@@ -244,9 +244,9 @@ fn decode(
         leaf,
         index: u32::from_be_bytes(bytes[136..140].try_into().map_err(|_| Error::Invalid)?),
         path: bytes[LEAF..expected - CERTIFICATE]
-            .chunks_exact(32)
-            .map(|item| item.try_into().map_err(|_| Error::Invalid))
-            .collect::<Result<_, _>>()?,
+            .as_chunks::<32>()
+            .0
+            .to_vec(),
         certificate: bytes[expected - CERTIFICATE..]
             .try_into()
             .map_err(|_| Error::Invalid)?,
