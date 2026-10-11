@@ -89,8 +89,10 @@ fn original_update_proves_genesis_and_retains_same_private_candidate_without_ado
     assert_eq!(proof.public_inputs().len(), 345);
     assert!(!proof.proof().is_empty());
     assert_eq!(
-        proof.scope().circuit_digest,
-        czkp::decode("b1bb892081b56e441211370c24e8f4371d053115e79e9a0011082131c79d375c").unwrap()
+        proof.scope().circuit_digest.to_vec(),
+        data_encoding::HEXLOWER
+            .decode(b"b1bb892081b56e441211370c24e8f4371d053115e79e9a0011082131c79d375c")
+            .unwrap()
     );
     assert!(
         proof.candidate.opening.blind == *opening,
