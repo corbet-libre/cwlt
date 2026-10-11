@@ -34,7 +34,7 @@ Adopt the final opening only after verifying the whole bundle's signed acceptanc
 Established punishment can arrive before its earlier Answer deposit; both orders
 produce the same burn and record, and a late Answer cannot refund punishment.
 
-Cryptographic library selection: reuse Noir 1.0.0-beta.26 and Barretenberg 5.0.0
+Cryptographic library selection: reuse Noir 1.0.0-beta.26 and Barretenberg 5.2.1
 through `czkp`; no local hash permutation, signature scheme or prover. All security
 predicates must also be checked by the pinned circuits. Client matching and key
 release must honor the private block; a proof cannot force a modified client.
