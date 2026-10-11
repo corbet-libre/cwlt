@@ -55,3 +55,21 @@ migration or reencoding. Original real issuance, Memory/File Store, competing CA
 lock, rejected-result and uncertain/cancelled write tests are authored. Cargo
 tests have not run in this tranche. The shared CKMG dependency adoption and
 complete native/browser custody and accounting acceptance remain unqualified.
+
+The opaque `cwlt-engine::RecordRecipient` opens only the original whole shuffled
+record-witness object. Keys supplies a separate immutable common-root purpose,
+the original community coordinate and its current checked clock floor through a
+borrowed synchronous capability. The receiver enforces the authenticated Epoch's
+configured period, exclusive expiry, exact whole-object length/digest and packet
+framing before HPKE. Exactly one opening must match the expected owner and the
+original leaf commitment, Merkle path and issuer certificate. The retained packet
+has no plaintext, path, blinding or serialization getter and remains device RAM.
+Opening consumes the borrowed recipient on success or refusal. The decoded
+packet retains its highest checked RAM clock; rollback or exclusive expiry
+terminally refuses that packet, with no claim of a persisted clock floor.
+
+The expected owner and Epoch must come from genuine current owners. This lower
+transport check neither initializes an account nor proves its private opening;
+the original account/circuit/prover join remains separate. Tests use maintained
+HPKE, Poseidon2/Merkle and Ed25519 with fictional lower inputs, and do not claim
+accepted-account or production admission. The new tests have not been executed.

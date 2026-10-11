@@ -15,8 +15,8 @@ python3 .github/check-first-party.py --metadata dependency-metadata.json
 python3 -B .github/test-engine-identity.py
 rustc --version
 cargo fmt --check || { cargo fmt; git diff > formatting.patch; exit 1; }
-cargo clippy --locked --all-targets --all-features -- -D warnings
-cargo test --locked --all-features
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo test --locked --workspace --all-features
 wasm-pack build --target web --release
 node tests/wasm.mjs
 wasm-pack test --node --all-features

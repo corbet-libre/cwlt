@@ -4,6 +4,7 @@
 //! Store transactions; constructing this engine does not establish accepted state.
 #![forbid(unsafe_code)]
 
+mod recipient;
 mod record;
 mod sealing;
 
@@ -75,6 +76,7 @@ impl Engine {
     }
 }
 
+pub use recipient::{ReceivedRecord, RecordRecipient};
 pub use sealing::Sealed;
 
 // The original map/hash Rust port remains in the preserved v01 source. It is not

@@ -17,9 +17,16 @@ chacha20poly1305 = { version = "0.11", default-features = false, features = ["al
 czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main" }
 ed25519-dalek = { version = "3.0", features = ["zeroize"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
+hpke = { version = "0.14", default-features = false, features = ["alloc", "x25519", "chacha"] }
+rs_merkle = "1.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+rand_chacha = "0.10"
+rand_core = "0.10"
+sha2 = "0.11"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
