@@ -184,11 +184,7 @@ fn issuer_public(key: &IssuerKey) -> [u8; 64] {
 
 /// The issuer emits canonical low-S signatures only; normalise like it does.
 fn low_s(signature: p256::ecdsa::Signature) -> [u8; 64] {
-    signature
-        .normalize_s()
-        .unwrap_or(signature)
-        .to_bytes()
-        .into()
+    signature.normalize_s().to_bytes().into()
 }
 
 fn operator() -> OperatorKey {
