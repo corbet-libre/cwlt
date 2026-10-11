@@ -5,7 +5,7 @@ use super::*;
 use crate::account::hashes;
 use crate::native_prover::Proof;
 use ed25519_dalek::{Signer as _, SigningKey as OperatorKey};
-use p256::ecdsa::{SigningKey as IssuerKey, signature::Signer as _};
+use p256::ecdsa::SigningKey as IssuerKey;
 
 fn proven(engine: &Engine, context: &GenesisContext) -> PreparedGenesisProof {
     PreparedGenesisProof {
