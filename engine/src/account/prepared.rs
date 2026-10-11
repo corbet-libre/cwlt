@@ -13,7 +13,8 @@ use zeroize::Zeroizing;
 mod native;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use native::{
-    AcceptanceBinding, AcceptedGenesisProof, GenesisPublic, IssuerAcceptance, PreparedGenesisProof,
+    AcceptanceBinding, AcceptedGenesisProof, GenesisPublic, IssuerAcceptance, MAX_PENDING_SEALED,
+    PendingGenesisBinding, PreparedGenesisProof, SealedPendingGenesis,
 };
 
 /// Original published enrollment data; validation alone does not authenticate it.
@@ -83,6 +84,20 @@ impl Engine {
     /// This checks context, registered-secret binding and32-level inclusion;
     /// it does not verify a grant or install accepted state, even on success.
     pub fn prepare_genesis(&self, context: GenesisContext) -> Result<PreparedGenesis, Error> {
+        let mut blind = [0; 32];
+        getrandom::fill(&mut blind).map_err(|_| Error::Crypto)?;
+        let result = self.genesis_with_blind(context, blind);
+        zeroize::Zeroize::zeroize(&mut blind);
+        result
+    }
+
+    /// Deterministic construction from one explicit original blind. Fresh blinds
+    /// come only from `prepare_genesis`; pending reopen supplies its stored blind.
+    pub(super) fn genesis_with_blind(
+        &self,
+        context: GenesisContext,
+        mut blind: Field,
+    ) -> Result<PreparedGenesis, Error> {
         if !self
             .sealing
             .matches_context(context.community_id.as_bytes())
@@ -95,8 +110,6 @@ impl Engine {
         let incoming = IndexedMap::create()?;
         let pairs = IndexedMap::create()?;
         let horizon = context.policy.horizon(context.checked_at)?;
-        let mut blind = [0; 32];
-        getrandom::fill(&mut blind).map_err(|_| Error::Crypto)?;
         let opening = Opening {
             available: context.policy.initial_credit,
             reserved: 0,

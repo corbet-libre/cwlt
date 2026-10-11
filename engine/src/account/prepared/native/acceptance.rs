@@ -129,7 +129,7 @@ fn statement_bytes(public: &GenesisPublic, policy: &AccountPolicy) -> Result<Vec
 }
 
 /// Original operator acceptance message for the retained statement and scope.
-fn acceptance_message(
+pub(super) fn acceptance_message(
     public: &GenesisPublic,
     policy: &AccountPolicy,
     scope: &czkp::ProofScope,

@@ -4,7 +4,9 @@ use crate::native_prover::{NativeProver, Proof};
 use serde::{Serialize, Serializer};
 use std::time::Instant;
 mod acceptance;
+mod pending;
 pub use acceptance::{AcceptanceBinding, AcceptedGenesisProof, IssuerAcceptance};
+pub use pending::{MAX_PENDING_SEALED, PendingGenesisBinding, SealedPendingGenesis};
 #[cfg(test)]
 mod tests;
 
