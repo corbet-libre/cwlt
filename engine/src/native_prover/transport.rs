@@ -50,10 +50,10 @@ pub(super) fn prove(
     let executable = std::fs::File::open(&config.executable).map_err(|_| Error::Crypto)?;
     let mut binary = Vec::new();
     executable
-        .take(256 * 1024 * 1024 + 1)
+        .take(512 * 1024 * 1024 + 1)
         .read_to_end(&mut binary)
         .map_err(|_| Error::Crypto)?;
-    if binary.len() > 256 * 1024 * 1024 || sha(&binary)? != config.executable_digest {
+    if binary.len() > 512 * 1024 * 1024 || sha(&binary)? != config.executable_digest {
         return Err(Error::Crypto);
     }
     let bytes = Zeroizing::new(

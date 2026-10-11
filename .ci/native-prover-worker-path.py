@@ -10,7 +10,7 @@ selected = [r for r in records if r.get("reason") == "compiler-artifact" and
 if len(selected) != 1 or Path(selected[0]["manifest_path"]).resolve() != Path("engine/Cargo.toml").resolve():
     raise SystemExit("Expected exactly one actual owned engine worker")
 worker = Path(selected[0]["executable"])
-if not worker.is_absolute() or not worker.is_file() or worker.stat().st_size > 256 * 1024 * 1024:
+if not worker.is_absolute() or not worker.is_file() or worker.stat().st_size > 512 * 1024 * 1024:
     raise SystemExit("Actual owned worker path or allocation bound differs")
 digest = hashlib.sha256()
 with worker.open("rb") as stream:

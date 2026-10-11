@@ -58,7 +58,7 @@ pub(crate) fn config() -> NativeProverConfig {
             .expect("actual owned native worker prerequisite"),
     );
     assert!(executable.is_absolute());
-    let executable_digest = sha(&read(&executable, 256 * 1024 * 1024)).unwrap();
+    let executable_digest = sha(&read(&executable, 512 * 1024 * 1024)).unwrap();
     NativeProverConfig {
         executable,
         executable_digest,
