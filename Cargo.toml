@@ -26,6 +26,7 @@ default = []
 passport = ["dep:cpsd", "dep:ckmg", "ckmg/passport", "dep:cwst", "dep:blake3"]
 record = ["dep:ckmg", "dep:cwst", "dep:czkp", "dep:blake3"]
 account = ["dep:ckmg", "dep:cwst", "dep:blake3"]
+native-prover = ["account", "ckmg/wallet-native-prover"]
 
 [dependencies]
 ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "v01", default-features = false, features = ["wallet-engine"], optional = true }
