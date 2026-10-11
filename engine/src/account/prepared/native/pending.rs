@@ -1,4 +1,11 @@
-//! Durable pending companion of one proven genesis candidate.
+//! Durable pending companion of one proven genesis candidate, in two states.
+//!
+//! State A ("sent") is written before the signed request leaves the device and
+//! carries the exact outbox and request digest only. State B additionally binds
+//! the DISTINCT extended acceptance digest and is written only after the actual
+//! response was verified. The state tag is part of the AAD, so a state-A
+//! ciphertext can never authenticate as state B or the reverse. A advances to B
+//! only through `advance_pending`; there is no downgrade and no skip.
 //!
 //! This reuses the engine's existing XChaCha20-Poly1305 sealing key and context
 //! binding with its own purpose-separated magic and AAD, so it can never be
@@ -15,6 +22,8 @@ use czkp::ProofScope;
 
 const MAGIC: &[u8] = b"cwlt.account-pending-genesis.v1\0";
 const NONCE: usize = 24;
+const SENT: u8 = 1;
+const ACCEPTED: u8 = 2;
 const VERSION: u8 = 1;
 /// Original single-value Store limit; the whole sealed companion stays below it.
 pub const MAX_PENDING_SEALED: usize = 1024 * 1024;
@@ -31,7 +40,9 @@ pub struct PendingGenesisBinding {
     /// Original request identity, signed request digest and pinned operator key.
     pub acceptance: AcceptanceBinding,
     /// DISTINCT digest of the original extended acceptance of the same request.
-    pub extended_acceptance_digest: [u8; 32],
+    /// `None` is state A (sent); `Some` is state B and is never zero or equal to
+    /// the request digest.
+    pub extended_acceptance_digest: Option<[u8; 32]>,
     /// Opaque authenticated upper binding and exact signed outbox bytes.
     pub upper: Vec<u8>,
 }
@@ -41,9 +52,10 @@ pub struct SealedPendingGenesis(Vec<u8>);
 impl SealedPendingGenesis {
     /// Check the exact envelope before authenticated restore by the same engine.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() <= MAGIC.len() + NONCE + 16
+        if bytes.len() <= MAGIC.len() + 1 + NONCE + 16
             || bytes.len() > MAX_PENDING_SEALED
             || !bytes.starts_with(MAGIC)
+            || ![SENT, ACCEPTED].contains(&bytes[MAGIC.len()])
         {
             return Err(Error::Invalid);
         }
@@ -206,8 +218,9 @@ fn check_binding(binding: &PendingGenesisBinding) -> Result<(), Error> {
     if a.request_id == [0; 32]
         || a.request_digest == [0; 32]
         || a.operator_key == [0; 32]
-        || binding.extended_acceptance_digest == [0; 32]
-        || binding.extended_acceptance_digest == a.request_digest
+        || binding
+            .extended_acceptance_digest
+            .is_some_and(|digest| digest == [0; 32] || digest == a.request_digest)
         || binding.upper.is_empty()
         || binding.upper.len() > MAX_UPPER
     {
@@ -217,15 +230,33 @@ fn check_binding(binding: &PendingGenesisBinding) -> Result<(), Error> {
 }
 
 impl PreparedGenesisProof {
-    /// Seal this exact proven candidate with the upper binding for durable reopen.
-    /// Only the same engine that produced the candidate can seal it. The result
-    /// is a pending companion, never an accepted account or a custody release.
+    /// Seal this exact proven candidate as state A (sent) with the upper binding
+    /// for durable reopen. The binding must carry no acceptance digest: state B
+    /// exists only through `Engine::advance_pending`. Only the same engine that
+    /// produced the candidate can seal it. The result is a pending companion,
+    /// never an accepted account or a custody release.
     pub fn seal_pending(
         &self,
         engine: &Engine,
         binding: &PendingGenesisBinding,
     ) -> Result<SealedPendingGenesis, Error> {
+        if binding.extended_acceptance_digest.is_some() {
+            return Err(Error::Invalid);
+        }
+        self.seal_state(engine, binding)
+    }
+
+    fn seal_state(
+        &self,
+        engine: &Engine,
+        binding: &PendingGenesisBinding,
+    ) -> Result<SealedPendingGenesis, Error> {
         check_binding(binding)?;
+        let state = if binding.extended_acceptance_digest.is_some() {
+            ACCEPTED
+        } else {
+            SENT
+        };
         let candidate = &self.candidate;
         if !Arc::ptr_eq(&candidate.binding, &engine.sealing)
             || candidate.secret.as_ref() != engine.seed.as_ref()
@@ -253,14 +284,14 @@ impl PreparedGenesisProof {
         w.bytes(&binding.acceptance.request_id);
         w.bytes(&binding.acceptance.request_digest);
         w.bytes(&binding.acceptance.operator_key);
-        w.bytes(&binding.extended_acceptance_digest);
+        w.bytes(&binding.extended_acceptance_digest.unwrap_or_default());
         w.var(&binding.upper)?;
-        if w.0.len() + MAGIC.len() + NONCE + 16 > MAX_PENDING_SEALED {
+        if w.0.len() + MAGIC.len() + 1 + NONCE + 16 > MAX_PENDING_SEALED {
             return Err(Error::Invalid);
         }
         let mut nonce = [0; NONCE];
         getrandom::fill(&mut nonce).map_err(|_| Error::Crypto)?;
-        let aad = [MAGIC, engine.sealing.context.as_slice()].concat();
+        let aad = [MAGIC, &[state], engine.sealing.context.as_slice()].concat();
         let encrypted = engine
             .sealing
             .cipher
@@ -272,7 +303,9 @@ impl PreparedGenesisProof {
                 },
             )
             .map_err(|_| Error::Crypto)?;
-        Ok(SealedPendingGenesis([MAGIC, &nonce, &encrypted].concat()))
+        Ok(SealedPendingGenesis(
+            [MAGIC, &[state], &nonce, &encrypted].concat(),
+        ))
     }
 }
 
@@ -285,11 +318,12 @@ impl Engine {
         sealed: &SealedPendingGenesis,
         now: u64,
     ) -> Result<(PreparedGenesisProof, PendingGenesisBinding), Error> {
-        let offset = MAGIC.len();
+        let state = sealed.0[MAGIC.len()];
+        let offset = MAGIC.len() + 1;
         let nonce: [u8; NONCE] = sealed.0[offset..offset + NONCE]
             .try_into()
             .map_err(|_| Error::Crypto)?;
-        let aad = [MAGIC, self.sealing.context.as_slice()].concat();
+        let aad = [MAGIC, &[state], self.sealing.context.as_slice()].concat();
         let plaintext = Zeroizing::new(
             self.sealing
                 .cipher
@@ -324,13 +358,20 @@ impl Engine {
             public_inputs.push(r.array()?);
         }
         let proof = r.var(MAX_PROOF)?.to_vec();
+        let acceptance = AcceptanceBinding {
+            request_id: r.array()?,
+            request_digest: r.array()?,
+            operator_key: r.array()?,
+        };
+        let digest: Field = r.array()?;
+        let extended_acceptance_digest = match state {
+            SENT if digest == [0; 32] => None,
+            ACCEPTED => Some(digest),
+            _ => return Err(Error::Crypto),
+        };
         let binding = PendingGenesisBinding {
-            acceptance: AcceptanceBinding {
-                request_id: r.array()?,
-                request_digest: r.array()?,
-                operator_key: r.array()?,
-            },
-            extended_acceptance_digest: r.array()?,
+            acceptance,
+            extended_acceptance_digest,
             upper: r.var(MAX_UPPER)?.to_vec(),
         };
         if !r.0.is_empty() {
@@ -356,6 +397,40 @@ impl Engine {
             },
             binding,
         ))
+    }
+}
+
+impl Engine {
+    /// Advance state A to state B after the actual response was verified by the
+    /// upper owner. The stored candidate, outbox and request digest are carried
+    /// over unchanged; only the DISTINCT extended acceptance digest is added.
+    /// State B, a zero digest or one equal to the request digest never advance.
+    pub fn advance_pending(
+        &self,
+        sealed: &SealedPendingGenesis,
+        extended_acceptance_digest: [u8; 32],
+        now: u64,
+    ) -> Result<SealedPendingGenesis, Error> {
+        let (proof, mut binding) = self.restore_pending_genesis(sealed, now)?;
+        if binding.extended_acceptance_digest.is_some() {
+            return Err(Error::Invalid);
+        }
+        binding.extended_acceptance_digest = Some(extended_acceptance_digest);
+        proof.seal_state(self, &binding)
+    }
+
+    /// Reopen only a state-B companion for activation. State A (no verified
+    /// response) never activates.
+    pub fn restore_accepted_pending(
+        &self,
+        sealed: &SealedPendingGenesis,
+        now: u64,
+    ) -> Result<(PreparedGenesisProof, PendingGenesisBinding), Error> {
+        let (proof, binding) = self.restore_pending_genesis(sealed, now)?;
+        if binding.extended_acceptance_digest.is_none() {
+            return Err(Error::Invalid);
+        }
+        Ok((proof, binding))
     }
 }
 

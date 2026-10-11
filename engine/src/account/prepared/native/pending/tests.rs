@@ -25,7 +25,7 @@ fn binding() -> PendingGenesisBinding {
             request_digest: [0xB2; 32],
             operator_key: [0x77; 32],
         },
-        extended_acceptance_digest: [0xE5; 32],
+        extended_acceptance_digest: None,
         upper: vec![4; 20_000],
     }
 }
@@ -86,8 +86,8 @@ fn foreign_engines_tampering_and_other_sealed_kinds_never_reopen() {
     let other = Engine::from_seed_and_sealing_key(&mut [7; 32], &mut [8; 32], b"other").unwrap();
     assert!(other.restore_pending_genesis(&sealed, 102).is_err());
     for index in [
-        MAGIC.len(),
-        MAGIC.len() + NONCE + 3,
+        MAGIC.len() + 1,
+        MAGIC.len() + 1 + NONCE + 3,
         sealed.as_bytes().len() - 1,
     ] {
         let mut bytes = sealed.as_bytes().to_vec();
@@ -112,13 +112,10 @@ fn foreign_engines_tampering_and_other_sealed_kinds_never_reopen() {
 fn binding_must_be_complete_distinct_and_bounded() {
     let (engine, context) = super::super::tests::fixture();
     let proof = proven(&engine, &context);
-    let mutations: [fn(&mut PendingGenesisBinding); 7] = [
+    let mutations: [fn(&mut PendingGenesisBinding); 5] = [
         |b| b.acceptance.request_id = [0; 32],
         |b| b.acceptance.request_digest = [0; 32],
         |b| b.acceptance.operator_key = [0; 32],
-        |b| b.extended_acceptance_digest = [0; 32],
-        // The signed request and the extended acceptance digests must differ.
-        |b| b.extended_acceptance_digest = b.acceptance.request_digest,
         |b| b.upper.clear(),
         |b| b.upper = vec![0; MAX_UPPER + 1],
     ];
@@ -128,6 +125,55 @@ fn binding_must_be_complete_distinct_and_bounded() {
         let result = proof.seal_pending(&engine, &changed);
         assert!(result.is_err(), "mutation {index}");
     }
+    // State B never seals directly, and its digest is never zero or the request digest.
+    let mut direct = binding();
+    direct.extended_acceptance_digest = Some([0xE5; 32]);
+    assert!(proof.seal_pending(&engine, &direct).is_err());
+    assert!(proof.seal_state(&engine, &direct).is_ok());
+    direct.extended_acceptance_digest = Some([0; 32]);
+    assert!(proof.seal_state(&engine, &direct).is_err());
+    direct.extended_acceptance_digest = Some(direct.acceptance.request_digest);
+    assert!(proof.seal_state(&engine, &direct).is_err());
+}
+
+#[test]
+fn state_advances_only_from_sent_to_accepted_and_only_accepted_activates() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &binding()).unwrap();
+    // State A reopens (exact outbox) but never activates.
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    assert!(a.extended_acceptance_digest.is_none());
+    assert!(engine.restore_accepted_pending(&sent, 102).is_err());
+    // Bad digests never advance.
+    assert!(engine.advance_pending(&sent, [0; 32], 102).is_err());
+    assert!(
+        engine
+            .advance_pending(&sent, a.acceptance.request_digest, 102)
+            .is_err()
+    );
+    let accepted = engine.advance_pending(&sent, [0xE5; 32], 102).unwrap();
+    let (reopened, b) = engine.restore_accepted_pending(&accepted, 103).unwrap();
+    // Everything but the added digest is carried over unchanged.
+    assert!(b.acceptance == a.acceptance && b.upper == a.upper);
+    assert_eq!(b.extended_acceptance_digest, Some([0xE5; 32]));
+    assert_eq!(reopened.proof(), proof.proof());
+    assert_eq!(
+        reopened.public_genesis().next_state,
+        proof.public_genesis().next_state
+    );
+    // No skip, no re-advance, no downgrade: B cannot advance and has no path back to A.
+    assert!(engine.advance_pending(&accepted, [0xE6; 32], 103).is_err());
+    // The state tag is authenticated: swapping it makes either ciphertext refuse.
+    for (wire, tag) in [(&sent, 2u8), (&accepted, 1u8)] {
+        let mut bytes = wire.as_bytes().to_vec();
+        bytes[MAGIC.len()] = tag;
+        let swapped = SealedPendingGenesis::from_bytes(&bytes).unwrap();
+        assert!(engine.restore_pending_genesis(&swapped, 103).is_err());
+    }
+    // State A expires at the original horizon exactly like before.
+    assert!(engine.advance_pending(&sent, [0xE5; 32], 200).is_err());
+    assert!(engine.restore_accepted_pending(&accepted, 200).is_err());
 }
 
 #[test]
