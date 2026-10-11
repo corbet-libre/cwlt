@@ -124,3 +124,85 @@ fn original_group_parser_refuses_single_program_missing_update_and_raw_key_proje
     missing.scope.verifying_key_digest = sha(&missing.verification_key).unwrap();
     assert!(NativeProver::new(missing).is_err());
 }
+
+#[test]
+fn original_supplied_vk_response_is_absent_and_never_replaces_the_original_key() {
+    use barretenberg_rs::generated_types::CircuitComputeVkResponse;
+    let original = CircuitComputeVkResponse {
+        bytes: vec![],
+        fields: vec![],
+        hash: vec![],
+    };
+    assert!(super::worker::supplied_vk_response(&original));
+    for returned in [
+        CircuitComputeVkResponse {
+            bytes: vec![1],
+            ..original.clone()
+        },
+        CircuitComputeVkResponse {
+            fields: vec![vec![1]],
+            ..original.clone()
+        },
+        CircuitComputeVkResponse {
+            hash: vec![1],
+            ..original.clone()
+        },
+    ] {
+        assert!(!super::worker::supplied_vk_response(&returned));
+    }
+}
+
+#[test]
+fn maintained_backend_failures_have_only_fixed_nonsecret_categories() {
+    use barretenberg_rs::BarretenbergError as Backend;
+    let classify = super::worker::backend_stage;
+    assert_eq!(classify(&Backend::Backend("std::bad_alloc".into())), 80);
+    assert_eq!(
+        classify(&Backend::Backend(
+            "verification key has wrong size: expected 3680, got 1".into()
+        )),
+        81
+    );
+    assert_eq!(
+        classify(&Backend::Backend(
+            "acir_format::circuit_buf_to_acir_format: failed to convert msgpack data to Program"
+                .into()
+        )),
+        82
+    );
+    assert_eq!(classify(&Backend::Backend("acir_format::witness_buf_to_witness_vector: failed to convert msgpack data to WitnessStack".into())), 83);
+    assert_eq!(
+        classify(&Backend::Serialization(
+            "private fixture must remain redacted".into()
+        )),
+        84
+    );
+    assert_eq!(
+        classify(&Backend::Deserialization(
+            "private fixture must remain redacted".into()
+        )),
+        85
+    );
+    assert_eq!(
+        classify(&Backend::InvalidResponse(
+            "private fixture must remain redacted".into()
+        )),
+        86
+    );
+    assert_eq!(
+        classify(&Backend::Backend(
+            "unrecognized private fixture must remain redacted".into()
+        )),
+        87
+    );
+    assert_eq!(
+        classify(&Backend::Ipc("private fixture must remain redacted".into())),
+        88
+    );
+    assert_eq!(
+        classify(&Backend::Backend(
+            "prefix std::bad_alloc private fixture must remain redacted".into()
+        )),
+        87
+    );
+}

@@ -8,9 +8,9 @@ use acvm::{
     pwg::ForeignCallWaitInfo,
 };
 use barretenberg_rs::{
-    BarretenbergApi,
+    BarretenbergApi, BarretenbergError,
     backends::FfiBackend,
-    generated_types::{CircuitInput, ProofSystemSettings},
+    generated_types::{CircuitComputeVkResponse, CircuitInput, ProofSystemSettings},
 };
 use data_encoding::BASE64;
 use nargo::foreign_calls::{ForeignCallError, ForeignCallExecutor};
@@ -49,6 +49,42 @@ fn settings() -> ProofSystemSettings {
         oracle_hash_type: "poseidon2".into(),
         disable_zk: false,
         optimized_solidity_verifier: false,
+    }
+}
+
+// Supplying the authenticated original VK makes maintained BB omit its optional
+// computed-VK response. No returned key may replace the configured original key.
+pub(super) fn supplied_vk_response(vk: &CircuitComputeVkResponse) -> bool {
+    vk.bytes.is_empty() && vk.fields.is_empty() && vk.hash.is_empty()
+}
+
+// Fixed categories only. The SDK's message may contain private data and must
+// never reach stdout, stderr, the parent error or a test assertion.
+pub(super) fn backend_stage(error: &BarretenbergError) -> u8 {
+    match error {
+        BarretenbergError::Backend(message) if message == "std::bad_alloc" => 80,
+        BarretenbergError::Backend(message)
+            if message.starts_with("verification key has wrong size: expected ") =>
+        {
+            81
+        }
+        BarretenbergError::Backend(message)
+            if message
+                == "acir_format::circuit_buf_to_acir_format: failed to convert msgpack data to Program" =>
+        {
+            82
+        }
+        BarretenbergError::Backend(message)
+            if message
+                == "acir_format::witness_buf_to_witness_vector: failed to convert msgpack data to WitnessStack" =>
+        {
+            83
+        }
+        BarretenbergError::Serialization(_) => 84,
+        BarretenbergError::Deserialization(_) => 85,
+        BarretenbergError::InvalidResponse(_) => 86,
+        BarretenbergError::Backend(_) => 87,
+        _ => 88,
     }
 }
 
@@ -150,9 +186,12 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
             &witness,
             settings(),
         )
-        .map_err(|_| Error::Crypto)?;
+        .map_err(|error| {
+            *stage = backend_stage(&error);
+            Error::Crypto
+        })?;
     *stage = 74; // Original result framing and VK equality.
-    if response.vk.bytes != verification_key
+    if !supplied_vk_response(&response.vk)
         || response.public_inputs.len() != 345
         || response.proof.is_empty()
         || response.proof.len() > MAX_PROOF / 32
