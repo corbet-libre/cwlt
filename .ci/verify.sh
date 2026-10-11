@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Preserve actual compiler/test diagnostics in the kept job stream.
+exec 2>&1
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 export CARGO_TERM_COLOR="${CARGO_TERM_COLOR:-always}"
 export WASM_BINDGEN_TEST_TIMEOUT="${WASM_BINDGEN_TEST_TIMEOUT:-120}"
