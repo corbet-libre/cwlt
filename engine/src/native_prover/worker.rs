@@ -11,7 +11,9 @@ use acvm::{
 use barretenberg_rs::{
     BarretenbergApi, BarretenbergError,
     backends::FfiBackend,
-    generated_types::{CircuitComputeVkResponse, CircuitInput, ProofSystemSettings},
+    generated_types::{
+        CircuitComputeVkResponse, CircuitInput, CircuitInputNoVK, ProofSystemSettings,
+    },
 };
 use data_encoding::BASE64;
 use nargo::foreign_calls::{ForeignCallError, ForeignCallExecutor};
@@ -57,6 +59,19 @@ fn settings() -> ProofSystemSettings {
 // computed-VK response. No returned key may replace the configured original key.
 pub(super) fn supplied_vk_response(vk: &CircuitComputeVkResponse) -> bool {
     vk.bytes.is_empty() && vk.fields.is_empty() && vk.hash.is_empty()
+}
+
+// This public-data comparison diagnoses a refused original proof only. The
+// computed key can never replace the authenticated supplied key or escape.
+pub(super) fn refused_vk_stage(
+    original: &[u8],
+    computed: &Result<CircuitComputeVkResponse, BarretenbergError>,
+) -> u8 {
+    match computed {
+        Ok(key) if key.bytes.as_slice() == original => 92,
+        Ok(_) => 93,
+        Err(_) => 94,
+    }
 }
 
 // Fixed categories only. The SDK's message may contain private data and must
@@ -222,8 +237,22 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
             response.proof.clone(),
             settings(),
         )
-        .map_err(|_| Error::Crypto)?;
+        .map_err(|_| {
+            *stage = 90; // Maintained local verification API refused.
+            Error::Crypto
+        })?;
     if !verified.verified {
+        *stage = 91; // Original supplied-key verification returned false.
+        // Public bytecode/settings only; retain the refusal under every outcome.
+        // Never prove again, substitute this key, change scope or return it.
+        let computed = api.circuit_compute_vk(
+            CircuitInputNoVK {
+                name: "account-genesis".into(),
+                bytecode: bytecode.to_vec(),
+            },
+            settings(),
+        );
+        *stage = refused_vk_stage(&verification_key, &computed);
         return Err(Error::Crypto);
     }
     let proof = response.proof.into_iter().flatten().collect();

@@ -153,6 +153,34 @@ fn original_supplied_vk_response_is_absent_and_never_replaces_the_original_key()
 }
 
 #[test]
+fn refused_public_key_diagnostic_has_only_fixed_codes_and_cannot_accept() {
+    use barretenberg_rs::{BarretenbergError, generated_types::CircuitComputeVkResponse};
+    let original = [1, 2, 3];
+    let key = |bytes| CircuitComputeVkResponse {
+        bytes,
+        fields: vec![],
+        hash: vec![],
+    };
+    assert_eq!(
+        super::worker::refused_vk_stage(&original, &Ok(key(original.to_vec()))),
+        92
+    );
+    assert_eq!(
+        super::worker::refused_vk_stage(&original, &Ok(key(vec![4]))),
+        93
+    );
+    assert_eq!(
+        super::worker::refused_vk_stage(
+            &original,
+            &Err(BarretenbergError::Backend(
+                "private message must remain discarded".into()
+            ))
+        ),
+        94
+    );
+}
+
+#[test]
 fn maintained_backend_failures_have_only_fixed_nonsecret_categories() {
     use barretenberg_rs::BarretenbergError as Backend;
     let classify = super::worker::backend_stage;
