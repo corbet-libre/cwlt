@@ -182,6 +182,15 @@ fn issuer_public(key: &IssuerKey) -> [u8; 64] {
         .unwrap()
 }
 
+/// The issuer emits canonical low-S signatures only; normalise like it does.
+fn low_s(signature: p256::ecdsa::Signature) -> [u8; 64] {
+    signature
+        .normalize_s()
+        .unwrap_or(signature)
+        .to_bytes()
+        .into()
+}
+
 fn operator() -> OperatorKey {
     OperatorKey::from_bytes(&[5; 32])
 }
@@ -231,7 +240,7 @@ fn response(
             .bytes()
             .unwrap();
         let signature: p256::ecdsa::Signature = issuer().sign(&bytes);
-        ancestry.signature = signature.to_bytes().into();
+        ancestry.signature = low_s(signature);
         ancestry
     });
     AcceptedResponse {
@@ -239,7 +248,7 @@ fn response(
             accepted_at: at,
             signature: operator().sign(&message).to_bytes(),
         },
-        certificate: certificate.to_bytes().into(),
+        certificate: low_s(certificate),
         ancestry,
     }
 }
