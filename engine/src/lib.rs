@@ -4,7 +4,7 @@
 //! Store transactions; constructing this engine does not establish accepted state.
 #![forbid(unsafe_code)]
 
-mod account;
+pub mod account;
 /// Internal cryptographic state; the upper wallet owns every durable receipt.
 /// Its public data is not enrollment, admission or accepted-account authority.
 pub mod account_key;
