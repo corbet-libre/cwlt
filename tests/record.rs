@@ -1,3 +1,4 @@
+//! Original record custody with actual encrypted Store commit and reopen.
 #![cfg(feature = "record")]
 use ckmg::wallet_engine::Engine;
 use cwlt::record::DurableRecord;
