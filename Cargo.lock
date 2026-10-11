@@ -918,7 +918,7 @@ dependencies = [
 [[package]]
 name = "ckmg"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=v01#eaf93d906c6e8f15937ed5aeae6424efd4c59f2b"
+source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=v01#5ed21e3fa6d2662204b14d9edd9f2403934e4565"
 dependencies = [
  "blake3",
  "cdht",
@@ -1253,6 +1253,7 @@ dependencies = [
  "czkp",
  "data-encoding",
  "ed25519-dalek",
+ "flate2",
  "getrandom 0.4.3",
  "hpke",
  "nargo",
@@ -1274,7 +1275,7 @@ dependencies = [
 [[package]]
 name = "cwlt-engine"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#93afcd9f6584a1a8c11f1cef0e702113ee2510f7"
+source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#36027a6e463411e2a9bca797d5906835b1043ea9"
 dependencies = [
  "chacha20poly1305",
  "czkp",
