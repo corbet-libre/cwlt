@@ -918,7 +918,7 @@ dependencies = [
 [[package]]
 name = "ckmg"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=v01#08cf590e3e7e0d371f051ccf8428e144ce36f7c0"
+source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=v01#eaf93d906c6e8f15937ed5aeae6424efd4c59f2b"
 dependencies = [
  "blake3",
  "cdht",
@@ -1051,7 +1051,7 @@ dependencies = [
 [[package]]
 name = "cpsd"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cpsd?branch=main#f5f190c2fec60d5556cf979ed5fe383a7461f613"
+source = "git+https://git.corbet.ch/corbet-foss/cpsd?branch=main#c012bc78d8548e1ab6571bdd8b99627965742678"
 dependencies = [
  "ark-bls12-381",
  "ark-ec 0.4.2",
@@ -1274,7 +1274,7 @@ dependencies = [
 [[package]]
 name = "cwlt-engine"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#731af025ead3b09924598214e41b842686387d65"
+source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#d0819c40d3a90038d8d95dcdcbd89bff0eb19ed3"
 dependencies = [
  "chacha20poly1305",
  "czkp",
