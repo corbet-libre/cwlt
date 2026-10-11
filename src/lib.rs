@@ -5,6 +5,11 @@
 #![forbid(unsafe_code)]
 pub mod witness;
 
+/// Durable epoch-cache custody through Keys' exact engine and the original Store.
+/// A committed proof cache supplies no proof or accepted-account authority.
+#[cfg(feature = "record")]
+pub mod record;
+
 /// Nonexporting global-passport custody over the existing Pseudonyms engine.
 #[cfg(feature = "passport")]
 pub mod passport;

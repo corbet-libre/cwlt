@@ -29,3 +29,29 @@ Keys owns fresh authorization and lends this view through its callback. It must
 not expose `&mut PassportHolder`. A common random identity root is equally wrapped
 for each enrolled passkey by the Keys owner; Wallet does not choose a root recipe
 or claim recovery after all local and DHT copies are lost.
+
+## Original durable holder and record cache
+
+`Holder::from_holder_seed` consumes only the freshly authorized Keys capability.
+`DurableHolder` retains the original CPSD sealed holder and exactly matching
+original CWST owner record. Explicit creation requires an absent holder record;
+ordinary `open` refuses missing or wrong-scope state. Pending issuance, finish
+and cancellation are separate private candidates. A public request or result
+is released only after the actual compound Store CAS and its original matching
+receipt prove the exact operation and sealed-record digest. Companion changes
+cannot replace the holder namespace. Cancelled or uncertain writes require
+reopening the actual Store and adopting its authenticated outcome; readback or
+a version number cannot replace the original receipt barrier. An invalid issuer
+answer consumes its opening only when that refused result has committed.
+
+The staged `DurableRecord` similarly installs a candidate only after its exact
+Store receipt. It consumes `ckmg::wallet_engine`, sharing the original main engine
+and CZKP types; another engine dependency instance cannot substitute. Cached
+proof framing supplies neither proof verification nor accepted-account authority.
+
+This port preserves the original non-root v2 passport and sealed holder codecs.
+Extended root-bearing holder state is refused intact by CPSD, with no implicit
+migration or reencoding. Original real issuance, Memory/File Store, competing CAS,
+lock, rejected-result and uncertain/cancelled write tests are authored. Cargo
+tests have not run in this tranche. The shared CKMG dependency adoption and
+complete native/browser custody and accounting acceptance remain unqualified.

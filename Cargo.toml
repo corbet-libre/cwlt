@@ -23,9 +23,14 @@ missing_docs = "warn"
 
 [features]
 default = []
-passport = ["dep:cpsd"]
+passport = ["dep:cpsd", "dep:ckmg", "ckmg/passport", "dep:cwst", "dep:blake3"]
+record = ["dep:ckmg", "dep:cwst", "dep:czkp", "dep:blake3"]
 
 [dependencies]
+ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "v01", default-features = false, features = ["wallet-engine"], optional = true }
+cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "v01", optional = true }
+czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main", optional = true }
+blake3 = { version = "1.8", optional = true }
 cpsd = { git = "https://git.corbet.ch/corbet-foss/cpsd", branch = "main", default-features = false, optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -36,7 +41,12 @@ wasm-bindgen = "0.2"
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tempfile = "3"
+
 [dev-dependencies]
+ed25519-dalek = "3.0"
+futures = { version = "0.3", features = ["executor"] }
 csgn = { git = "https://git.corbet.ch/corbet-foss/csgn", branch = "main", default-features = false, features = ["volatile-signer"] }
 
 # Pairing arithmetic uses upstream optimized implementations. Our own tests
