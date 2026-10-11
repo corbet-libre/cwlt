@@ -15,6 +15,9 @@ use std::{
 };
 
 const SCOPE: &str = "account-owner-fixture";
+#[cfg(feature = "record")]
+#[path = "account_owner/genesis.rs"]
+mod genesis;
 #[path = "account_owner/initial.rs"]
 mod initial;
 fn engine() -> Engine {

@@ -10,6 +10,8 @@ const KEY: &[u8] = b"owner.v1";
 
 mod initial;
 pub use initial::InitialAccountCheckpoint;
+mod genesis;
+pub use genesis::AccountGenesis;
 
 /// Coarse refusal; no private key or opening is included.
 #[derive(Debug)]
