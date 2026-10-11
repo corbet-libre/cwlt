@@ -12,6 +12,9 @@ publish = false
 unsafe_code = "forbid"
 missing_docs = "warn"
 
+[features]
+native-prover = ["dep:acvm", "dep:noirc_abi", "dep:noirc_artifacts", "dep:nargo", "dep:bn254_blackbox_solver", "dep:barretenberg-rs", "dep:rlimit", "dep:data-encoding"]
+
 [dependencies]
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
 czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main" }
@@ -24,10 +27,26 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = { version = "1", features = ["derive"] }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+acvm = { git = "https://github.com/noir-lang/noir", tag = "v1.0.0-beta.26", default-features = false, features = ["bn254"], optional = true }
+noirc_abi = { git = "https://github.com/noir-lang/noir", tag = "v1.0.0-beta.26", optional = true }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", tag = "v1.0.0-beta.26", optional = true }
+nargo = { git = "https://github.com/noir-lang/noir", tag = "v1.0.0-beta.26", default-features = false, optional = true }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", tag = "v1.0.0-beta.26", optional = true }
+barretenberg-rs = { version = "=5.2.1", default-features = false, features = ["ffi"], optional = true }
+rlimit = { version = "0.11", optional = true }
+data-encoding = { version = "2.9", optional = true }
+
+[[example]]
+name = "cwlt-account-worker"
+path = "examples/account_worker.rs"
+required-features = ["native-prover"]
+
 [dev-dependencies]
 rand_chacha = "0.10"
 rand_core = "0.10"
 sha2 = "0.11"
+tempfile = "3"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

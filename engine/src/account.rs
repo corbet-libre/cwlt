@@ -7,6 +7,8 @@ mod policy;
 mod prepared;
 
 pub use policy::{AccountPolicy, ExtensionPolicy};
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+pub use prepared::PreparedGenesisProof;
 pub use prepared::{Enrollment, GenesisContext, PreparedGenesis};
 
 type Field = [u8; 32];

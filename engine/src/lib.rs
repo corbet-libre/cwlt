@@ -8,6 +8,9 @@ mod account;
 /// Internal cryptographic state; the upper wallet owns every durable receipt.
 /// Its public data is not enrollment, admission or accepted-account authority.
 pub mod account_key;
+/// Native private witness execution over the maintained original Noir/BB owners.
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+pub mod native_prover;
 mod recipient;
 mod record;
 mod sealing;
@@ -80,6 +83,8 @@ impl Engine {
     }
 }
 
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+pub use account::PreparedGenesisProof;
 pub use account::{AccountPolicy, Enrollment, ExtensionPolicy, GenesisContext, PreparedGenesis};
 pub use recipient::{ReceivedRecord, RecordRecipient};
 pub use sealing::Sealed;

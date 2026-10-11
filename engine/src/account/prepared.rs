@@ -9,6 +9,11 @@ use crate::{Engine, Error, sealing};
 use std::{cell::Cell, sync::Arc};
 use zeroize::Zeroizing;
 
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+mod native;
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+pub use native::PreparedGenesisProof;
+
 /// Original published enrollment data; validation alone does not authenticate it.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Enrollment {

@@ -97,3 +97,34 @@ delegation, admission, accepted Frontier, proof or initialized accounting state.
 Those original owner and circuit joins remain required. The added actual Store
 and maintained-crypto tests are source scenarios until native execution succeeds;
 Memory test storage does not establish disk durability or production admission.
+
+
+# Native private genesis proving
+
+The optional native-only `native-prover` engine feature consumes the opaque
+prepared genesis candidate through the original typed Noir ABI and maintained
+ACVM and Barretenberg owners. Trusted runtime configuration fixes the complete
+compiled circuit, original verification key, full authenticated setup, owned
+worker executable digest and finite memory, thread, capacity and call bounds.
+The original compressed G1 contract uses 32 bytes per point, complete 4 MiB
+chunks and at most nine chunks; a separate 128 MiB setup allocation bound does
+not relax that point-count restriction.
+The worker rejects foreign calls and locally verifies the produced proof against
+the same verification key and ordered public inputs before returning public data.
+
+Private input, openings and compressed witness remain in device RAM. The owned
+process is killed and reaped on refusal, cancellation or deadline; private frames
+are wiped, stderr is discarded and core dumps are disabled. Runtime must retain
+the cancellation handle with the actual Vault lifetime. The trusted owned worker
+must not fork descendants. The successful opaque proof result retains the exact
+original private candidate, including its opening, blind and monotonic RAM clock
+floor; it exposes only public proof data and candidate consistency checks.
+
+This stage does not install initialized account state or grant Keys Use, current
+policy, enrollment, operator acceptance, an accepted Frontier or a Store receipt.
+A future adoption owner must join that same retained candidate to genuine issuer
+acceptance and the original durable receipt. It must not regenerate private state
+from public proof data. Native process refusal tests are authored; this feature
+has not compiled or executed. Exact original Noir/Barretenberg artifact and SDK
+conformance, a genuine full setup and a successful cross-runtime proof remain
+unqualified. A verifier-only setup chunk cannot stand in for the full prover SRS.
