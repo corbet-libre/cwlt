@@ -106,9 +106,10 @@ prepared genesis candidate through the original typed Noir ABI and maintained
 ACVM and Barretenberg owners. Trusted runtime configuration fixes the complete
 compiled circuit, original verification key, full authenticated setup, owned
 worker executable digest and finite memory, thread, capacity and call bounds.
-The original compressed G1 contract uses 32 bytes per point, complete 4 MiB
-chunks and at most nine chunks; a separate 128 MiB setup allocation bound does
-not relax that point-count restriction.
+The original extension artifact contract uses 32 compressed bytes per G1 point,
+complete 4 MiB chunks and a 128 MiB bound on its shared setup. The separate
+standalone account circuit has a nine-chunk contract; it cannot substitute for
+the extension-update circuit or its original shared artifact group.
 The worker rejects foreign calls and locally verifies the produced proof against
 the same verification key and ordered public inputs before returning public data.
 

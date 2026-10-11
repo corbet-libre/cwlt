@@ -19,8 +19,8 @@ mod worker;
 
 pub(crate) const MAX_CIRCUIT: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_SETUP: usize = 128 * 1024 * 1024;
-// Original account artifact contract permits at most nine compressed 4 MiB chunks.
-pub(crate) const MAX_POINTS: u32 = 9 * 131_072;
+// Original extension artifact contract bounds the complete shared setup at 128 MiB.
+pub(crate) const MAX_POINTS: u32 = (MAX_SETUP / 32) as u32;
 pub(crate) const MAX_FRAME: usize = (MAX_CIRCUIT + MAX_SETUP) * 4 + 2 * 1024 * 1024;
 pub(crate) const MAX_PROOF: usize = 1024 * 1024;
 
