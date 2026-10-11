@@ -4,6 +4,7 @@
 //! Store transactions; constructing this engine does not establish accepted state.
 #![forbid(unsafe_code)]
 
+mod account;
 mod recipient;
 mod record;
 mod sealing;
@@ -76,9 +77,10 @@ impl Engine {
     }
 }
 
+pub use account::{AccountPolicy, Enrollment, ExtensionPolicy, GenesisContext, PreparedGenesis};
 pub use recipient::{ReceivedRecord, RecordRecipient};
 pub use sealing::Sealed;
 
-// The original map/hash Rust port remains in the preserved v01 source. It is not
-// wired into this bounded custody/cache stage: the concrete BB adapter and signed
-// state adoption still require their own original relation and conformance work.
+// Private account preparation computes an uninitialized candidate only. Original
+// cross-runtime vectors, the native prover and signed state adoption still need
+// their own conformance and owner integration before an accepted account exists.

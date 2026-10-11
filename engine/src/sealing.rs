@@ -21,6 +21,9 @@ pub(super) struct Binding {
     context: Vec<u8>,
 }
 impl Binding {
+    pub(super) fn matches_context(&self, context: &[u8]) -> bool {
+        self.context[MAGIC.len()..] == *context
+    }
     pub(super) fn new(key: &[u8; 32], context: &[u8]) -> Result<Self, Error> {
         if context.is_empty() || context.len() > 4096 {
             return Err(Error::Invalid);
