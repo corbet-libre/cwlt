@@ -1,3 +1,5 @@
+//! Record presentation validation and engine custody scenarios.
+
 use cwlt_engine::{Engine, Sealed};
 use czkp::record::{Context, Epoch, Purpose, Record, Use, presentation_key};
 fn engine() -> Engine {

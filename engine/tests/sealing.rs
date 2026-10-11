@@ -1,3 +1,5 @@
+//! Authenticated engine sealing and restoration scenarios.
+
 use cwlt_engine::{Engine, Sealed};
 
 fn engine(seed: u8, key: u8, context: &[u8]) -> Engine {
