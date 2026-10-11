@@ -34,3 +34,7 @@ pub fn prepare(input: &str) -> Result<String, String> {
     // Plan contains only primitive integers and booleans: JSON encoding is total.
     Ok(serde_json::json!(result).to_string())
 }
+
+/// Extension-state counterpart reservation verification.
+#[cfg(feature = "wave")]
+pub mod wave;
