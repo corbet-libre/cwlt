@@ -1,6 +1,6 @@
 //! Original encrypted holder record composition; no enrollment authority fixture.
 #![cfg(feature = "passport")]
-use cwlt::passport::{
+use crate::passport::{
     CommunityId, DurableHolder, Holder,
     rand::{SeedableRng, rngs::StdRng},
 };
@@ -11,7 +11,10 @@ use cwst::{
 use std::{cell::Cell, rc::Rc};
 
 fn holder() -> Holder {
-    Holder::from_seed(&mut [31; 32])
+    Holder(
+        cpsd::OpaqueHolder::from_seed_and_sealing_key(&mut [31; 32], &mut [32; 32], b"wallet")
+            .unwrap(),
+    )
 }
 fn cipher() -> ckmg::passkey::StoreCipher {
     ckmg::passkey::store_cipher(
@@ -87,7 +90,19 @@ fn initial_record_binds_exact_scope_snapshot_operation_and_actual_receipt() {
             nym
         );
         assert!(
-            DurableHolder::open(Holder::from_seed(&mut [33; 32]), &reopened, "wallet").is_err()
+            DurableHolder::open(
+                Holder(
+                    cpsd::OpaqueHolder::from_seed_and_sealing_key(
+                        &mut [31; 32],
+                        &mut [33; 32],
+                        b"wallet"
+                    )
+                    .unwrap()
+                ),
+                &reopened,
+                "wallet"
+            )
+            .is_err()
         );
     });
 }

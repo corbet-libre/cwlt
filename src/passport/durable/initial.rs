@@ -61,3 +61,7 @@ impl InitialCheckpoint {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/passport_initial.rs"]
+mod tests;
