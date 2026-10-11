@@ -918,7 +918,7 @@ dependencies = [
 [[package]]
 name = "ckmg"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=v01#5ed21e3fa6d2662204b14d9edd9f2403934e4565"
+source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=v01#8dbb39c7b142637b14a142e534c31ca17830f9a3"
 dependencies = [
  "blake3",
  "cdht",
@@ -1275,7 +1275,7 @@ dependencies = [
 [[package]]
 name = "cwlt-engine"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#36027a6e463411e2a9bca797d5906835b1043ea9"
+source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#bdeca48182a64b613c6528b47c91815c4a07920f"
 dependencies = [
  "chacha20poly1305",
  "czkp",
