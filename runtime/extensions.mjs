@@ -1,26 +1,21 @@
 // Member-only witness construction. The supplied Rust planner owns integer
 // transitions; the authenticated Noir policy independently constrains every field.
 import {AccountWitness,enrollmentInput,openingInput,slotInput} from './account.mjs';
-import {accountHashes,IndexedMap,receiptBytes as rawReceiptBytes,ackBytes as rawAckBytes,noirInput} from './hashes.mjs';
+import {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput} from './hashes.mjs';
 import {statementFromInput,publicInputValues,validityHorizon} from './statement.mjs';
 import {fieldBytes,fieldValue,limbs32} from '@corbet-labs/czkp/primitives';
 import {cat,be,sha,hex,zeros,random} from '@corbet-labs/czkp/encoding';
-import {compactMessage,compactHash} from '@corbet-labs/czkp/compact';
-import {recordEpochPublicInputs,recordLeafCommitment,recordBytes,verifyRecordCertificate} from '@corbet-labs/czkp/record';
-export {accountHashes,IndexedMap,noirInput};
-export const receiptBytes=(community,responder,peer,slot,delegation,resolution,hash)=>compactMessage(rawReceiptBytes(community,responder,peer,slot,delegation,resolution),hash);
-export const ackBytes=(community,initiator,recipient,slot,answerDigest,delegation,issuedAt,hash)=>compactMessage(rawAckBytes(community,initiator,recipient,slot,answerDigest,delegation,issuedAt),hash);
-export const receiptDigest=(message,signature,hash)=>compactHash(cat(new TextEncoder().encode('cmsg.accounting-receipt-digest.v1\0'),message,signature),hash);
+export {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput};
 export {checkpointFromVerified} from './hashes.mjs';
 const bytes=v=>Uint8Array.from(v);
 const extInput=p=>({revision:p.revision,quorum:p.publicRecordQuorum,change_cost:p.changeTokenCost,delay:p.depositDelaySeconds,batch:p.minimumDepositBatch});
 export {extInput};
 export const advance=(community,owner,root,commitment)=>sha(cat(new TextEncoder().encode('cblc.obligation-inbox.v2\0'),community,owner,root,commitment));
-export function contactBytes(community,owner,slot,hash) {
-  return compactMessage(cat(new TextEncoder().encode('cblc.contact.v1\0'),community,
+export function contactBytes(community,owner,slot) {
+  return cat(new TextEncoder().encode('cblc.contact.v1\0'),community,
     slot.role===0?owner:slot.peer,slot.role===0?slot.peer:owner,slot.nonce,slot.group,slot.contactPolicy,
     fieldBytes(slot.role===0?slot.ownerAuthority:slot.peerAuthority),fieldBytes(slot.role===0?slot.peerAuthority:slot.ownerAuthority),
-    be(slot.admittedAt,8),be(slot.expiresAt,8)),hash);
+    be(slot.admittedAt,8),be(slot.expiresAt,8));
 }
 export function extensionHashes(api) {
   const h=accountHashes(api);
@@ -42,7 +37,7 @@ export class ExtensionWitness extends AccountWitness {
       o.outgoingRoot,o.outgoingCount,o.incomingRoot,o.incomingCount,o.pairRoot,o.pairCount,o.frontier,o.createdAt,o.admissionEpoch,o.admissions,...limbs32(o.blind)]);
   }
   input(blind,now) {
-    return {...super.input(blind,now),state_policy:this.statePolicyHash,old:extendedOpening(this.opening),extension:extInput(this.extension),previous_inbox:this.opening.inbox,inbox:this.opening.inbox,
+    return {...super.input(blind,now),old:extendedOpening(this.opening),extension:extInput(this.extension),previous_inbox:this.opening.inbox,inbox:this.opening.inbox,
       consume_only:false,change_binding:zeros(),delivery_kind:0,contact_signature:new Uint8Array(64)};
   }
   plan(input) {
@@ -110,52 +105,6 @@ export class ExtensionWitness extends AccountWitness {
       community:this.community,recipient:slot.peer,release_epoch:releaseEpoch,nullifier:deposit.nullifier,authorization_nullifier:deposit.authorizationNullifier,obligation:deposit.obligation,
       reporter:this.owner.member,secret:this.ownerSecret,state_policy:this.statePolicyHash,version:this.version,accepted_at:certificate.acceptedAt,state:fieldBytes(this.commitment),opening:extendedOpening(this.opening),certificate:certificate.signature,slot:slotInput(slot),kind}};
   }
-  wave(event,context,scope,issuerKey) {return this.waveEvidence(event,context,scope,issuerKey);}
-  waveOutcome(event,context,scope,issuerKey,outcome,resolution,acknowledgment) {
-    if(!['answer','close','silence'].includes(outcome))throw new Error('Unknown settled outcome');
-    return this.waveEvidence(event,context,scope,issuerKey,{outcome,resolution,acknowledgment});
-  }
-  async waveEvidence(event,{history,challenge},scope,issuerKey,settled) {
-    // All mutable state is detached before the first asynchronous hash.
-    const state=this.clone();state.owner=structuredClone(this.owner);state.ownerSecret=bytes(this.ownerSecret);
-    state.community=bytes(this.community);state.statePolicyHash=bytes(this.statePolicyHash);
-    state.extension=structuredClone(this.extension);state.certificate=structuredClone(this.certificate);
-    state.outgoing=this.outgoing.clone();state.incoming=this.incoming.clone();
-    history=bytes(history);challenge=bytes(challenge);scope=bytes(scope);issuerKey=bytes(issuerKey);
-    settled=settled?structuredClone(settled):undefined;
-    const slot=state.slots.get(event.toString());
-    const code=settled?{answer:1,close:2,silence:3}[settled.outcome]:0;
-    if(!slot||slot.phase!==(code===3?5:code?3:2)||!state.certificate)throw new Error('Accepted active reservation required');
-    const map=slot.role===0?state.outgoing:state.incoming,found=map.find(event);
-    if(!found)throw new Error('Missing reservation membership');
-    const selected=map.witness(found[0]),payload=await state.hashes.obligation(event,slot,slot.phase);
-    if(selected.leaf[1]!==payload)throw new Error('Reservation opening differs');
-    const receiptDigest=code&&code!==3?bytes(settled.resolution.ed25519ReceiptDigest):zeros();
-    const domain=code?0x63776c742e657874656e73696f6e2d6f7574636f6d652e7631n:0x63776c742e657874656e73696f6e2d776176652e7631n;
-    const binding=fieldBytes(await state.hashes.raw([domain,1n,
-      ...limbs32(state.ownerSecret),state.commitment,payload,...limbs32(challenge),...limbs32(history),
-      ...(code?[BigInt(code),...limbs32(receiptDigest)]:[])]));
-    const context={community:Array.from(state.community),owner:Array.from(state.owner.member),peer:Array.from(slot.peer),role:slot.role,
-      nonce:Array.from(slot.nonce),group:Array.from(slot.group),contactPolicy:Array.from(slot.contactPolicy),history:Array.from(history),challenge:Array.from(challenge),
-      openedAt:Number(slot.admittedAt),expiresAt:Number(slot.expiresAt),ownerAuthority:Array.from(fieldBytes(slot.ownerAuthority)),peerAuthority:Array.from(fieldBytes(slot.peerAuthority))};
-    const wave={context,statePolicy:Array.from(state.statePolicyHash),version:Number(state.version),state:Array.from(fieldBytes(state.commitment)),
-      acceptedAt:state.certificate.acceptedAt,binding:Array.from(binding),certificate:Array.from(state.certificate.signature)};
-    const result={statement:{kind:'wave',policy:state.extension,certificateKey:Array.from(issuerKey),wave},input:{extension:extInput(state.extension),issuer_key:issuerKey,scope,
-      community:state.community,owner:state.owner.member,peer:slot.peer,role:slot.role,nonce:slot.nonce,group:slot.group,contact_policy:slot.contactPolicy,
-      history,challenge,opened_at:slot.admittedAt,expires_at:slot.expiresAt,owner_authority:fieldBytes(slot.ownerAuthority),peer_authority:fieldBytes(slot.peerAuthority),
-      state_policy:state.statePolicyHash,version:state.version,state:fieldBytes(state.commitment),accepted_at:state.certificate.acceptedAt,binding,
-      secret:state.ownerSecret,opening:extendedOpening(state.opening),slot:slotInput(slot),selected,certificate:state.certificate.signature}};
-    if(code){
-      const resolution=settled.resolution??{kind:0,issuedAt:0n,historyDigest:zeros(),ed25519ReceiptDigest:zeros(),signature:new Uint8Array(64)};
-      const acknowledgment=settled.acknowledgment??{issuedAt:0n,signature:new Uint8Array(64)};
-      result.statement={kind:'outcome',policy:state.extension,certificateKey:Array.from(issuerKey),
-        outcome:{evidence:wave,outcome:settled.outcome,receiptDigest:Array.from(receiptDigest)}};
-      Object.assign(result.input,{outcome:code,receipt_digest:receiptDigest,owner_enrollment:enrollmentInput(slot.ownerEnrollment),peer_enrollment:enrollmentInput(slot.peerEnrollment),
-        resolution:{kind:resolution.kind,issued_at:resolution.issuedAt,history_digest:resolution.historyDigest,ed25519_receipt_digest:resolution.ed25519ReceiptDigest,signature:resolution.signature},
-        acknowledgment:{issued_at:acknowledgment.issuedAt,signature:acknowledgment.signature}});
-    }
-    return result;
-  }
   record(context) {
     const total=this.opening.accepted+this.opening.declined+this.opening.punished;
     const shares=total>=BigInt(this.extension.publicRecordQuorum)?[Number(this.opening.accepted*10000n/total),Number(this.opening.declined*10000n/total)]:null;
@@ -163,38 +112,5 @@ export class ExtensionWitness extends AccountWitness {
     const record={context,community:Array.from(this.community),owner:Array.from(this.owner.member),version:Number(this.version),state:Array.from(fieldBytes(this.commitment)),inbox:{root:Array.from(this.opening.inbox)},shares};
     return {statement:{kind:'record',policy:this.extension,record},input:{extension:extInput(this.extension),community:this.community,owner:this.owner.member,version:this.version,state:fieldBytes(this.commitment),inbox:this.opening.inbox,
       purpose:context.purpose==='firstContact'?0:1,challenge:context.challenge,expires_at:context.expiresAt,present:shares!==null,shares:shares??[0,0,0],state_policy:this.statePolicyHash,registered_secret:fieldValue(this.owner.secretHash),opening:extendedOpening(this.opening)}};
-  }
-  // Member-only proof construction. The caller supplies an already authenticated
-  // current descriptor and its privately opened common-download witness. This
-  // builder cannot authenticate a descriptor or grant listing/contact authority.
-  async recordEpoch(presentationPublicKey,witness,scope,issuerKey,{frozenHolder}={}) {
-    witness=structuredClone(witness);scope=structuredClone(scope);
-    const equal=(a,b)=>hex(Uint8Array.from(a))===hex(Uint8Array.from(b));
-    const matches=(holder,leaf)=>holder&&equal(holder.owner.member,leaf.owner)
-      &&Number(holder.version)===leaf.version&&equal(fieldBytes(holder.commitment),leaf.state)
-      &&equal(holder.opening.inbox,leaf.requiredInbox);
-    // Prefer the original sealed frozen opening. If none is available, refuse;
-    // a later ordinary update is not permission to reveal a new same-epoch leaf.
-    let selected=witness.leaf,signature=witness.certificate;
-    let source=[frozenHolder,this].find(holder=>matches(holder,selected));
-    if(!source){
-      selected=witness.ancestry?.record?.leaf;signature=witness.ancestry?.record?.signature;
-      if(!selected||!matches(this,selected))throw new Error('Required record opening unavailable');
-      source=this;
-    }
-    const state=source.clone();state.community=bytes(source.community);state.owner=structuredClone(source.owner);
-    state.statePolicyHash=bytes(source.statePolicyHash);state.extension=structuredClone(source.extension);
-    if(!equal(state.community,witness.epoch.community)||!equal(state.owner.member,this.owner.member))throw new Error('Foreign record witness');
-    const total=state.opening.accepted+state.opening.declined+state.opening.punished;
-    const shares=total>=BigInt(state.extension.publicRecordQuorum)?[Number(state.opening.accepted*10000n/total),Number(state.opening.declined*10000n/total)]:null;
-    if(shares)shares.push(10000-shares[0]-shares[1]);
-    const blindedLeaf=Array.from(await recordLeafCommitment(state.community,witness.epoch.epoch,selected,fields=>state.hashes.raw(fields)));
-    const record={epoch:witness.epoch,owner:Array.from(state.owner.member),presentationKey:recordBytes(presentationPublicKey),
-      blindedLeaf,certificate:recordBytes(signature,64),shares};
-    await verifyRecordCertificate(record);
-    const input=recordEpochPublicInputs(record,scope,issuerKey);
-    return {statement:{kind:'recordEpoch',policy:state.extension,record},input:{...input,extension:extInput(state.extension),
-      version:state.version,state:fieldBytes(state.commitment),required_inbox:selected.requiredInbox,blinding:selected.blinding,
-      state_policy:state.statePolicyHash,registered_secret:fieldValue(state.owner.secretHash),opening:extendedOpening(state.opening)}};
   }
 }
