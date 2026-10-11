@@ -3,6 +3,8 @@ use super::*;
 use crate::native_prover::{NativeProver, Proof};
 use serde::{Serialize, Serializer};
 use std::time::Instant;
+mod acceptance;
+pub use acceptance::{AcceptanceBinding, AcceptedGenesisProof, IssuerAcceptance};
 #[cfg(test)]
 mod tests;
 
@@ -11,6 +13,63 @@ mod tests;
 pub struct PreparedGenesisProof {
     candidate: PreparedGenesis,
     proof: Proof,
+}
+
+/// Original public genesis statement data, never a grant or accepted account.
+/// All values come directly from the candidate used by the native serializer.
+pub struct GenesisPublic {
+    /// Original protocol for the upper owner's typed statement conversion.
+    pub protocol_version: u32,
+    /// Original community digest included in the proved public inputs.
+    pub community: [u8; 32],
+    /// Original community-scoped enrolled account owner.
+    pub owner: [u8; 32],
+    /// Original economic policy digest.
+    pub policy_digest: [u8; 32],
+    /// Original authenticated common enrollment root.
+    pub enrollment_root: [u8; 32],
+    /// Frozen original statement observation, never a renewed proof time.
+    pub now: u64,
+    /// Original exclusive proof horizon.
+    pub valid_until: u64,
+    /// True only for this original genesis computation.
+    pub genesis: bool,
+    /// Original fixed previous account version zero.
+    pub previous_version: u64,
+    /// Original fixed next genesis version zero.
+    pub next_version: u64,
+    /// Original fixed empty previous state.
+    pub previous_state: [u8; 32],
+    /// Commitment to the retained exact private opening.
+    pub next_state: [u8; 32],
+    /// Original fixed empty settlement marker.
+    pub settlement_marker: [u8; 32],
+}
+impl PreparedGenesisProof {
+    /// Project only the original public statement that this candidate proved.
+    /// No witness, opening, fresh authority or sending privilege is returned.
+    pub fn public_genesis(&self) -> GenesisPublic {
+        self.candidate.genesis_public()
+    }
+}
+impl PreparedGenesis {
+    fn genesis_public(&self) -> GenesisPublic {
+        GenesisPublic {
+            protocol_version: 2,
+            community: self.community,
+            owner: self.context.owner,
+            policy_digest: self.policy_digest,
+            enrollment_root: self.context.enrollment_root,
+            now: self.context.checked_at,
+            valid_until: self.opening.frontier,
+            genesis: true,
+            previous_version: 0,
+            next_version: 0,
+            previous_state: [0; 32],
+            next_state: self.commitment,
+            settlement_marker: [0; 32],
+        }
+    }
 }
 impl PreparedGenesisProof {
     /// Recheck the retained exact private candidate without exposing its opening.
@@ -218,6 +277,7 @@ impl PreparedGenesis {
         let p = &context.policy;
         let ext = &context.extension;
         let o = &self.opening;
+        let statement = self.genesis_public();
         let public = Public {
             extension: Extension {
                 revision: ext.revision,
@@ -230,18 +290,18 @@ impl PreparedGenesis {
             inbox: [0; 32],
             consume_only: false,
             change_binding: [0; 32],
-            community: &self.community,
-            owner: &context.owner,
-            policy_digest: &self.policy_digest,
-            enrollment_root: &context.enrollment_root,
-            now: context.checked_at,
-            valid_until: o.frontier,
-            genesis: true,
-            previous_version: 0,
-            next_version: 0,
-            previous_state: [0; 32],
-            next_state: &self.commitment,
-            settlement_marker: [0; 32],
+            community: &statement.community,
+            owner: &statement.owner,
+            policy_digest: &statement.policy_digest,
+            enrollment_root: &statement.enrollment_root,
+            now: statement.now,
+            valid_until: statement.valid_until,
+            genesis: statement.genesis,
+            previous_version: statement.previous_version,
+            next_version: statement.next_version,
+            previous_state: statement.previous_state,
+            next_state: &statement.next_state,
+            settlement_marker: statement.settlement_marker,
             initial_credit: p.initial_credit,
             maximum_available: p.maximum_available,
             outgoing_reservation: p.outgoing_reservation,

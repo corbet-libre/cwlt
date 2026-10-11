@@ -12,7 +12,9 @@ use zeroize::Zeroizing;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 mod native;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
-pub use native::PreparedGenesisProof;
+pub use native::{
+    AcceptanceBinding, AcceptedGenesisProof, GenesisPublic, IssuerAcceptance, PreparedGenesisProof,
+};
 
 /// Original published enrollment data; validation alone does not authenticate it.
 #[derive(Clone, PartialEq, Eq)]

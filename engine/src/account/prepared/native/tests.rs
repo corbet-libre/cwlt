@@ -4,8 +4,8 @@ use super::*;
 use crate::account::hashes;
 use czkp::poseidon::{integer, limbs};
 
-#[test]
-fn original_update_proves_genesis_and_retains_same_private_candidate_without_adoption() {
+/// Fictional but original-relation-consistent engine and public context.
+pub(super) fn fixture() -> (Engine, GenesisContext) {
     let engine =
         Engine::from_seed_and_sealing_key(&mut [7; 32], &mut [8; 32], b"community").unwrap();
     let key = engine.prepare_account_key("community", [1; 32]).unwrap();
@@ -76,6 +76,12 @@ fn original_update_proves_genesis_and_retains_same_private_candidate_without_ado
         index >>= 1;
     }
     context.enrollment_root = root;
+    (engine, context)
+}
+
+#[test]
+fn original_update_proves_genesis_and_retains_same_private_candidate_without_adoption() {
+    let (engine, context) = fixture();
     let candidate = engine.prepare_genesis(context.clone()).unwrap();
     let opening = zeroize::Zeroizing::new(candidate.opening.blind);
     let prover = NativeProver::new(crate::native_prover::tests::config()).unwrap();
