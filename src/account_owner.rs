@@ -8,6 +8,9 @@ use cwst::{Change, Store, backend::Backend};
 const OWNER: &str = "cwlt.account";
 const KEY: &[u8] = b"owner.v1";
 
+mod initial;
+pub use initial::InitialAccountCheckpoint;
+
 /// Coarse refusal; no private key or opening is included.
 #[derive(Debug)]
 pub enum Error {

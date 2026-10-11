@@ -15,6 +15,8 @@ use std::{
 };
 
 const SCOPE: &str = "account-owner-fixture";
+#[path = "account_owner/initial.rs"]
+mod initial;
 fn engine() -> Engine {
     Engine::from_seed_and_sealing_key(&mut [7; 32], &mut [8; 32], SCOPE.as_bytes()).unwrap()
 }
