@@ -13,7 +13,7 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 
 [features]
-native-prover = ["dep:acvm", "dep:noirc_abi", "dep:noirc_artifacts", "dep:nargo", "dep:bn254_blackbox_solver", "dep:barretenberg-rs", "dep:rlimit", "dep:data-encoding"]
+native-prover = ["dep:acvm", "dep:noirc_abi", "dep:noirc_artifacts", "dep:nargo", "dep:bn254_blackbox_solver", "dep:barretenberg-rs", "dep:rlimit", "dep:data-encoding", "dep:flate2"]
 
 [dependencies]
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
@@ -36,6 +36,7 @@ bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", tag = "v1.0
 barretenberg-rs = { version = "=5.2.1", default-features = false, features = ["ffi"], optional = true }
 rlimit = { version = "0.11", optional = true }
 data-encoding = { version = "2.9", optional = true }
+flate2 = { version = "1", optional = true }
 
 [[example]]
 name = "cwlt-account-worker"

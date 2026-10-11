@@ -1,6 +1,7 @@
 //! Original maintained ABI, ACVM and BB execution in one disposable process.
 use super::{
-    Error, MAX_CIRCUIT, MAX_FRAME, MAX_POINTS, MAX_PROOF, MAX_SETUP, Proof, abi, sha, update_key,
+    Error, MAX_CIRCUIT, MAX_FRAME, MAX_POINTS, MAX_PROOF, MAX_SETUP, Proof, abi, compression, sha,
+    update_key,
 };
 use acvm::{
     FieldElement,
@@ -145,15 +146,16 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
     // Explicit original compact MessagePack; ambient format variables cannot
     // change witness encoding. The compressed private buffer never reaches disk.
     *stage = 69; // Maintained compact witness encoding.
-    let witness = Zeroizing::new(
+    let compressed_witness = Zeroizing::new(
         stack
             .serialize_with_format(SerializationFormat::MsgpackCompact)
             .map_err(|_| Error::Crypto)?,
     );
-    if witness.len() > MAX_FRAME {
-        return Err(Error::Invalid);
-    }
-    *stage = 70; // Unchanged original compressed bytecode.
+    // The maintained BB API consumes decompressed MessagePack, just as the
+    // original wrapper's ungzip adapter does. Keep both private forms in RAM.
+    let witness = compression::decode(&compressed_witness, MAX_FRAME)?;
+    drop(compressed_witness);
+    *stage = 70; // Authenticated original bytecode, decoded without reserialization.
     #[derive(Deserialize)]
     struct Encoded {
         bytecode: String,
@@ -164,11 +166,12 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
     }
     let EncodedGroup { update: encoded } =
         serde_json::from_slice(&request.circuit).map_err(|_| Error::Invalid)?;
-    // Pass the unchanged original compressed bytecode, never serialize a new
-    // circuit or compute a substitute verification key.
-    let bytecode = BASE64
+    // Scope remains the original complete compressed artifact group. Only the
+    // maintained wrapper's gzip transport decoding precedes the same native API.
+    let compressed_bytecode = BASE64
         .decode(encoded.bytecode.as_bytes())
         .map_err(|_| Error::Invalid)?;
+    let bytecode = compression::decode(&compressed_bytecode, MAX_CIRCUIT)?;
     *stage = 71; // Maintained backend construction.
     let backend = FfiBackend::new().map_err(|_| Error::Crypto)?;
     let mut api = BarretenbergApi::new(backend);
@@ -180,7 +183,7 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
         .circuit_prove(
             CircuitInput {
                 name: "account-genesis".into(),
-                bytecode,
+                bytecode: bytecode.to_vec(),
                 verification_key: verification_key.clone(),
             },
             &witness,

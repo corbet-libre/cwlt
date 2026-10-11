@@ -14,6 +14,7 @@ use std::{
 };
 use zeroize::Zeroizing;
 mod abi;
+mod compression;
 #[cfg(test)]
 pub(crate) mod tests;
 mod transport;
