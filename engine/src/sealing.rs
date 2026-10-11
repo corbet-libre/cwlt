@@ -17,8 +17,8 @@ const SIZE: usize = MAGIC.len() + NONCE + PLAIN + 16;
 const MAX_SIZE: usize = SIZE + 8 * 1024 * 1024 + 16 * 1024;
 
 pub(super) struct Binding {
-    cipher: XChaCha20Poly1305,
-    context: Vec<u8>,
+    pub(super) cipher: XChaCha20Poly1305,
+    pub(super) context: Vec<u8>,
 }
 impl Binding {
     pub(super) fn matches_context(&self, context: &[u8]) -> bool {

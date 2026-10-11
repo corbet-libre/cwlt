@@ -5,6 +5,9 @@
 #![forbid(unsafe_code)]
 
 mod account;
+/// Internal cryptographic state; the upper wallet owns every durable receipt.
+/// Its public data is not enrollment, admission or accepted-account authority.
+pub mod account_key;
 mod recipient;
 mod record;
 mod sealing;

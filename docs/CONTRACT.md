@@ -73,3 +73,27 @@ transport check neither initializes an account nor proves its private opening;
 the original account/circuit/prover join remains separate. Tests use maintained
 HPKE, Poseidon2/Merkle and Ed25519 with fictional lower inputs, and do not claim
 accepted-account or production admission. The new tests have not been executed.
+
+# Pending account owner
+
+The account owner captures one maintained random P-256 key and the existing
+balance-purpose registered-secret commitment. It does not derive a P-256 key
+from that secret, a passkey or a device signing key. Its fixed, separately framed
+authenticated envelope preserves the original Engine v1/v2 wire formats.
+
+The upper wallet keeps each preparation opaque, with one immutable operation,
+sealed byte snapshot and Store base. It consumes the commit attempt before
+awaiting the original Store. A public enrollment projection becomes available
+only after the actual receipt binds that Store, operation and exact sealed record
+hash. Cancellation and unknown outcomes retain the same encrypted intent for
+reconciliation against the original authenticated winner; they never regenerate
+the key or infer absence. Ordinary open accepts existing authenticated state only.
+Equal passkeys supplying the same original engine binding restore the same key.
+
+The lower internal cryptographic package's public data grants no authority. Vault
+must freshly authorize original Keys Use for every production projection and drop
+the wallet owner on lock. This stage adds no signing oracle, verified enrollment,
+delegation, admission, accepted Frontier, proof or initialized accounting state.
+Those original owner and circuit joins remain required. The added actual Store
+and maintained-crypto tests are source scenarios until native execution succeeds;
+Memory test storage does not establish disk durability or production admission.

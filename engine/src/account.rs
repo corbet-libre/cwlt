@@ -10,3 +10,7 @@ pub use policy::{AccountPolicy, ExtensionPolicy};
 pub use prepared::{Enrollment, GenesisContext, PreparedGenesis};
 
 type Field = [u8; 32];
+
+pub(crate) fn registered_secret(scope: &str, seed: &Field) -> Result<Field, crate::Error> {
+    hashes::secret(&hashes::digest(scope.as_bytes())?, seed)
+}

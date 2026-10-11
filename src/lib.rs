@@ -5,6 +5,10 @@
 #![forbid(unsafe_code)]
 pub mod witness;
 
+/// Durable pending account-key custody. This grants no accepted account state.
+#[cfg(feature = "account")]
+pub mod account_owner;
+
 /// Durable epoch-cache custody through Keys' exact engine and the original Store.
 /// A committed proof cache supplies no proof or accepted-account authority.
 #[cfg(feature = "record")]
