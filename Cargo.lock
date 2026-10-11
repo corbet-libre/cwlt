@@ -1193,7 +1193,7 @@ dependencies = [
 [[package]]
 name = "cwlt-engine"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#9eeeb5164d79804e4e52578d47128d8816430ff1"
+source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#f226de3d0132f7b8d4e272d9e72cfc194c9cb747"
 dependencies = [
  "chacha20poly1305 0.11.0",
  "czkp",
