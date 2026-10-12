@@ -1317,7 +1317,7 @@ dependencies = [
 [[package]]
 name = "cwlt-engine"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#24ad979c4a8e0eb06b61147b13d7a6504a690562"
+source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#80b9eda52d625e75f8b78c31dcd13134e643abf2"
 dependencies = [
  "acvm",
  "barretenberg-rs",

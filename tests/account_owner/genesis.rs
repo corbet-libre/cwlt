@@ -66,7 +66,9 @@ pub(super) fn context<B: Backend>(owner: &DurableAccountOwner, store: &Store<B>)
             change_cost: 1,
             delay: 100,
             batch: 2,
+            standing: ExtensionPolicy::standing_digest(czkp::standing::Params::default()).unwrap(),
         },
+        standing: czkp::standing::Params::default(),
     }
 }
 
