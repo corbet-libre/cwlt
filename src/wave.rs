@@ -688,7 +688,7 @@ mod tests {
     fn signed() -> (WavePolicy, WaveStatement) {
         use p256::ecdsa::{Signature, SigningKey, signature::Signer};
         let key = SigningKey::from_bytes(&[7; 32].into()).unwrap();
-        let point = key.verifying_key().to_encoded_point(false);
+        let point = key.verifying_key().to_sec1_point(false);
         let mut policy = policy();
         policy.certificate_key = point.as_bytes()[1..].to_vec();
         let mut statement = statement();
