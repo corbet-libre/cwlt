@@ -18,11 +18,15 @@ const SCOPE: &str = "account-owner-fixture";
 #[cfg(feature = "record")]
 #[path = "account_owner/genesis.rs"]
 mod genesis;
-#[cfg(all(feature = "record", feature = "native-prover", not(target_arch = "wasm32")))]
-#[path = "account_owner/pending.rs"]
-mod pending;
 #[path = "account_owner/initial.rs"]
 mod initial;
+#[cfg(all(
+    feature = "record",
+    feature = "native-prover",
+    not(target_arch = "wasm32")
+))]
+#[path = "account_owner/pending.rs"]
+mod pending;
 fn engine() -> Engine {
     Engine::from_seed_and_sealing_key(&mut [7; 32], &mut [8; 32], SCOPE.as_bytes()).unwrap()
 }
