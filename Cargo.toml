@@ -28,6 +28,7 @@ record = ["dep:ckmg", "dep:cwst", "dep:czkp", "dep:blake3"]
 account = ["dep:ckmg", "dep:cwst", "dep:blake3"]
 native-prover = ["account", "ckmg/wallet-native-prover"]
 wave = ["dep:czkp"]
+native-verifier = ["wave", "dep:cvfy"]
 schema = ["wave", "dep:utoipa", "dep:schemars", "czkp/schema"]
 
 [dependencies]
@@ -35,6 +36,7 @@ ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "v01", def
 cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "v01", optional = true }
 czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main", optional = true }
 blake3 = { version = "1.8", optional = true }
+cvfy = { git = "https://git.corbet.ch/corbet-foss/cvfy.git", branch = "main", optional = true }
 utoipa = { version = "6", optional = true }
 schemars = { version = "1", optional = true }
 cpsd = { git = "https://git.corbet.ch/corbet-foss/cpsd", branch = "main", default-features = false, optional = true }
