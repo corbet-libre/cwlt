@@ -775,12 +775,12 @@ mod tests {
             &outcome,
             b"p",
             &expected,
-            WaveOutcome::Close,
+            WaveOutcome::Answer,
             &[21; 32],
             130,
         ))
         .unwrap();
-        assert_eq!(done.outcome(), WaveOutcome::Close);
+        assert_eq!(done.outcome(), WaveOutcome::Answer);
         assert_eq!(ok.outcome.calls.get(), 1);
     }
 }
