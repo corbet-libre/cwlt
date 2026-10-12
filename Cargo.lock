@@ -1272,6 +1272,7 @@ dependencies = [
  "czkp",
  "ed25519-dalek",
  "futures",
+ "p256 0.14.0",
  "schemars 1.2.2",
  "serde",
  "serde_json",

@@ -10,7 +10,7 @@ fn tagged(domain: &[u8], tag: u64, fields: &[[u8; 32]]) -> [u8; 32] {
     input.extend_from_slice(fields);
     hash(&input).unwrap()
 }
-fn context(owner: &DurableAccountOwner, store: &Store<Controlled>) -> GenesisContext {
+pub(super) fn context<B: Backend>(owner: &DurableAccountOwner, store: &Store<B>) -> GenesisContext {
     let projection = owner.projection(&engine(), store).unwrap();
     let community = czkp::decode(&czkp::digest(SCOPE.as_bytes())).unwrap();
     let mut row = Enrollment {

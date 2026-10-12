@@ -98,12 +98,13 @@ pub struct ActivatedAccount {
 }
 
 impl AccountGenesisProof {
-    /// Commit state A and the exact signed outbox in one Store commit. The
-    /// candidate is consumed: later work reopens from the durable row only.
-    /// `binding` carries no acceptance digest or response (state A).
+    /// Commit state A and the exact signed outbox in one Store commit. A pending
+    /// or accepted row is never replaced, so repeating this cannot change state A;
+    /// later work reopens from the durable row only. `binding` carries no
+    /// acceptance digest or response (state A).
     #[allow(clippy::too_many_arguments)]
     pub async fn stage_pending<B: Backend>(
-        self,
+        &self,
         owner: &DurableAccountOwner,
         fresh_engine: &Engine,
         store: &mut Store<B>,

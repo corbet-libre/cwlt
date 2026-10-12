@@ -18,6 +18,9 @@ const SCOPE: &str = "account-owner-fixture";
 #[cfg(feature = "record")]
 #[path = "account_owner/genesis.rs"]
 mod genesis;
+#[cfg(all(feature = "record", feature = "native-prover", not(target_arch = "wasm32")))]
+#[path = "account_owner/pending.rs"]
+mod pending;
 #[path = "account_owner/initial.rs"]
 mod initial;
 fn engine() -> Engine {
