@@ -321,8 +321,7 @@ impl WaveVerifier {
 /// The issuer's accepted-state certificate is checked explicitly: the circuit
 /// only requires the bytes to be non-zero.
 fn check_certificate(policy: &WavePolicy, statement: &WaveStatement) -> Result<(), Error> {
-    let key: [u8; 64] = self
-        .policy
+    let key: [u8; 64] = policy
         .certificate_key
         .as_slice()
         .try_into()
@@ -347,8 +346,8 @@ fn check_certificate(policy: &WavePolicy, statement: &WaveStatement) -> Result<(
 /// Ordered exactly as the public parameters of the Noir `wave` and `outcome`
 /// relations; `outcome` adds the outcome code and receipt digest before the
 /// certificate.
-fn fields(
-    &self,
+fn public_fields(
+    policy: &WavePolicy,
     statement: &WaveStatement,
     outcome: Option<&WaveOutcomeStatement>,
 ) -> Result<Vec<PublicField>, Error> {
