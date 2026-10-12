@@ -1,7 +1,7 @@
 //! Real planner state partitions, also executed as wasm.
 use cwlt::witness::{Balances, Request, Standing, StandingParams};
 
-pub fn params() -> StandingParams {
+fn params() -> StandingParams {
     StandingParams {
         c0: 3,
         h_a: 14,
