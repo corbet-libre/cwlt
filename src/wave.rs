@@ -611,7 +611,7 @@ mod tests {
         assert_eq!(wave.len(), 586);
         let outcome = WaveOutcomeStatement {
             evidence: s.clone(),
-            outcome: WaveOutcome::Close,
+            outcome: WaveOutcome::Answer,
             receipt_digest: [19; 32],
         };
         let fields = public_fields(&policy(), &s, Some(&outcome)).unwrap();
@@ -745,7 +745,7 @@ mod tests {
         // Outcome: the expected outcome and receipt are checked before the backend.
         let outcome = WaveOutcomeStatement {
             evidence: s.clone(),
-            outcome: WaveOutcome::Close,
+            outcome: WaveOutcome::Answer,
             receipt_digest: [21; 32],
         };
         assert!(
@@ -753,7 +753,7 @@ mod tests {
                 &outcome,
                 b"p",
                 &expected,
-                WaveOutcome::Answer,
+                WaveOutcome::Close,
                 &[21; 32],
                 130
             ))
@@ -764,7 +764,7 @@ mod tests {
                 &outcome,
                 b"p",
                 &expected,
-                WaveOutcome::Close,
+                WaveOutcome::Answer,
                 &[22; 32],
                 130
             ))
