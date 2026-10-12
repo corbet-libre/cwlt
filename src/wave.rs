@@ -611,7 +611,7 @@ mod tests {
         assert_eq!(wave.len(), 586);
         let outcome = WaveOutcomeStatement {
             evidence: s.clone(),
-            outcome: WaveOutcome::Answer,
+            outcome: WaveOutcome::Close,
             receipt_digest: [19; 32],
         };
         let fields = public_fields(&policy(), &s, Some(&outcome)).unwrap();
