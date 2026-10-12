@@ -272,7 +272,8 @@ impl ProofCheck for BrowserCheck {
     }
 }
 
-/// JavaScript face of the browser verifier: the same [`WaveVerifier`], with the
+/// JavaScript face of the browser verifier (a local safety check; the server's
+/// `cvfy` verification is authoritative): the same [`WaveVerifier`], with the
 /// host's bb.js functions as the two proof checks. JSON in, JSON out; a refusal
 /// rejects the promise with the Rust error name.
 #[cfg(target_arch = "wasm32")]
@@ -350,6 +351,8 @@ impl BrowserWaveVerifier {
     }
 }
 
+/// The device-side check is a local safety check; the server's `cvfy`
+/// verification is the authoritative one.
 /// Counterpart verifier. The host builds both checks from authenticated
 /// artifacts; nothing here reads a file, trusts a proof-supplied key or caches
 /// a verdict. Native and browser share this one implementation.
