@@ -27,7 +27,7 @@ const policyInput = p => Object.fromEntries(POLICY_WIRE.map(([key, wire]) => [wi
 // Local witness state. It is never accepted by an operator without a real proof
 // plus a durable accepted-state comparison. Returned candidates do not mutate it.
 export class AccountWitness {
-  static async genesis({ hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now, extension, transition, standing }) {
+  static async genesis({ hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now, extension, transition, standing, policyTables }) {
     const value = new this();
     Object.assign(value, { extension, transition, hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now: BigInt(now), version: 0n });
     value.owner = checkpoint.entries[ownerIndex];
@@ -47,7 +47,8 @@ export class AccountWitness {
     value.commitment = await value.commit(value.opening, 0n);
     const input = value.input(value.opening.blind, now);
     // The planner derives the tables from the signed parameters (czkp's owner function).
-    const first = transition({ old: { reserved: 0, accepted: 0, declined: 0, punished: 0 },
+    // Test and artifact builds may pass the derived tables (czkp golden vectors) instead of a planner.
+    const first = policyTables ? { policy: policyTables } : transition({ old: { reserved: 0, accepted: 0, declined: 0, punished: 0 },
       standing: Object.fromEntries(Object.entries(value.opening.standing).map(([k, v]) => [k, Number(v)])), params: standing,
       createdAt: Number(value.opening.createdAt), now: Number(now), action: 11, amount: 0, role: 0, phase: 1, outcome: 0,
       answered: false, selfPunished: false, kind: 0, changeCost: 1 });
