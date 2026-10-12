@@ -8,7 +8,7 @@ import {cat,be,sha,hex,zeros,random} from '@corbet-labs/czkp/encoding';
 export {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput};
 export {checkpointFromVerified} from './hashes.mjs';
 const bytes=v=>Uint8Array.from(v);
-const extInput=p=>({revision:p.revision,quorum:p.publicRecordQuorum,change_cost:p.changeTokenCost,delay:p.depositDelaySeconds,batch:p.minimumDepositBatch,standing:p.standingPolicyDigest});
+const extInput=p=>({revision:p.revision,quorum:p.publicRecordQuorum,change_cost:p.changeTokenCost,delay:p.depositDelaySeconds,batch:p.minimumDepositBatch,standing:Array.from(p.standingPolicyDigest)});
 export {extInput};
 export const advance=(community,owner,root,commitment)=>sha(cat(new TextEncoder().encode('cblc.obligation-inbox.v2\0'),community,owner,root,commitment));
 export function contactBytes(community,owner,slot) {
@@ -20,7 +20,7 @@ export function contactBytes(community,owner,slot) {
 export function extensionHashes(api) {
   const h=accountHashes(api);
   h.raw=async v=>fieldValue((await api.poseidon2Hash({inputs:v.map(n=>fieldBytes(BigInt(n)))})).hash);
-  h.extension=p=>h.hash(31,[...[p.revision,p.publicRecordQuorum,p.changeTokenCost,p.depositDelaySeconds,p.minimumDepositBatch].map(BigInt),...limbs32(p.standingPolicyDigest)]);
+  h.extension=p=>h.hash(31,[...[p.revision,p.publicRecordQuorum,p.changeTokenCost,p.depositDelaySeconds,p.minimumDepositBatch].map(BigInt),...limbs32(Uint8Array.from(p.standingPolicyDigest))]);
   h.delivery=(community,recipient,reporter,slot,kind)=>h.hash(32,[...limbs32(community),...limbs32(recipient),...limbs32(reporter),...limbs32(slot.nonce),...limbs32(slot.group),BigInt(kind)]);
   h.authorization=async(community,owner,secret,slot,kind)=>h.hash(33,[await h.marker(community,secret,owner,slot.peer,slot.nonce),await h.delivery(community,slot.peer,owner,slot,kind),BigInt(kind)]);
   h.obligation=(event,s,phase)=>h.hash(4,[event,BigInt(s.role),...limbs32(s.peer),...limbs32(s.nonce),...limbs32(s.group),...limbs32(s.contactPolicy),BigInt(s.amount),BigInt(phase),BigInt(s.outcome??0),s.answered?1n:0n,s.selfPunished?1n:0n,BigInt(s.admittedAt),BigInt(s.expiresAt),s.peerAuthority,s.ownerAuthority]);
