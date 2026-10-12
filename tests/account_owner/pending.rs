@@ -12,7 +12,7 @@ use ckmg::wallet_engine::{
 };
 use cwlt::account_owner::AccountGenesisProof;
 use ed25519_dalek::{Signer as _, SigningKey as OperatorKey};
-use p256::ecdsa::{SigningKey as IssuerKey, signature::Signer as _};
+use p256::ecdsa::SigningKey as IssuerKey;
 use std::{path::PathBuf, time::Duration};
 
 const REQUEST: [u8; 32] = [0xA1; 32];
