@@ -145,7 +145,6 @@ impl VerifiedWaveReservation {
     }
 }
 
-#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 fn validate_context(
     policy: &WavePolicy,
     statement: &WaveStatement,
@@ -204,40 +203,192 @@ fn validate_context(
 }
 
 /// Public field elements, as in the Noir public ABI: every byte is one field.
-#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
-type PublicField = [u8; 32];
-#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
+pub type PublicField = [u8; 32];
 fn scalar(value: u64) -> PublicField {
     let mut field = [0; 32];
     field[24..].copy_from_slice(&value.to_be_bytes());
     field
 }
-#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 fn push_bytes(fields: &mut Vec<PublicField>, value: &[u8]) {
     fields.extend(value.iter().map(|byte| scalar(u64::from(*byte))));
 }
 
-/// Counterpart verifier. The host builds both configurations from authenticated
-/// artifacts; nothing here reads a file, trusts a proof-supplied key or caches
-/// a verdict.
-#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
-pub struct WaveVerifier {
-    policy: WavePolicy,
-    observed_at: u64,
-    authority_until: u64,
-    wave: cvfy::NativeVerifier,
-    outcome: cvfy::NativeVerifier,
+/// One proof check of the counterpart relations over the ordered public
+/// fields. The host supplies the backend (native worker or browser prover
+/// library) built from authenticated artifacts; every context, policy, lease
+/// and issuer-certificate check stays in [`WaveVerifier`], never in a backend.
+pub trait ProofCheck {
+    /// `Ok` only for a valid proof of exactly these public fields.
+    fn check(
+        &self,
+        fields: &[PublicField],
+        proof: &[u8],
+    ) -> impl std::future::Future<Output = Result<(), Error>>;
 }
 
 #[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
-impl WaveVerifier {
-    /// `authority_until` is the exclusive end of the authenticated policy lease.
+impl ProofCheck for cvfy::NativeVerifier {
+    async fn check(&self, fields: &[PublicField], proof: &[u8]) -> Result<(), Error> {
+        self.verify(fields, proof)
+    }
+}
+
+/// Browser backend: one asynchronous JavaScript function
+/// `(fields: Uint8Array, proof: Uint8Array) => Promise<boolean>` that runs the
+/// pinned prover library's verifier (bb.js, `@corbet-labs/czkp/verify`
+/// primitives) under the authenticated key. `fields` is the concatenation of
+/// the 32-byte big-endian public fields. Anything but a resolved `true` is a
+/// refusal.
+#[cfg(target_arch = "wasm32")]
+pub struct BrowserCheck(js_sys::Function);
+
+#[cfg(target_arch = "wasm32")]
+impl BrowserCheck {
+    /// Wrap the host's verifier function.
+    pub fn new(verify: js_sys::Function) -> Self {
+        Self(verify)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl ProofCheck for BrowserCheck {
+    async fn check(&self, fields: &[PublicField], proof: &[u8]) -> Result<(), Error> {
+        use wasm_bindgen::JsCast;
+        let flat: Vec<u8> = fields.iter().flatten().copied().collect();
+        let promise = self
+            .0
+            .call2(
+                &wasm_bindgen::JsValue::NULL,
+                &js_sys::Uint8Array::from(flat.as_slice()),
+                &js_sys::Uint8Array::from(proof),
+            )
+            .map_err(|_| Error::CryptoProvider)?
+            .dyn_into::<js_sys::Promise>()
+            .map_err(|_| Error::CryptoProvider)?;
+        match wasm_bindgen_futures::JsFuture::from(promise).await {
+            Ok(verdict) if verdict.as_bool() == Some(true) => Ok(()),
+            _ => Err(Error::CryptoProvider),
+        }
+    }
+}
+
+/// JavaScript face of the browser verifier: the same [`WaveVerifier`], with the
+/// host's bb.js functions as the two proof checks. JSON in, JSON out; a refusal
+/// rejects the promise with the Rust error name.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub struct BrowserWaveVerifier(WaveVerifier<BrowserCheck>);
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+impl BrowserWaveVerifier {
+    /// `policy` is the authenticated [`WavePolicy`] as JSON.
+    #[wasm_bindgen::prelude::wasm_bindgen(constructor)]
     pub fn new(
+        policy: &str,
+        now: u64,
+        authority_until: u64,
+        wave: js_sys::Function,
+        outcome: js_sys::Function,
+    ) -> Result<BrowserWaveVerifier, String> {
+        let policy: WavePolicy = serde_json::from_str(policy).map_err(|_| "InvalidInput")?;
+        WaveVerifier::new(
+            policy,
+            now,
+            authority_until,
+            BrowserCheck::new(wave),
+            BrowserCheck::new(outcome),
+        )
+        .map(Self)
+        .map_err(|error| error.to_string())
+    }
+
+    /// Verify a reservation; resolves to the verified context as JSON.
+    pub async fn verify(
+        &self,
+        statement: &str,
+        proof: &[u8],
+        expected: &str,
+        now: u64,
+    ) -> Result<String, String> {
+        let statement: WaveStatement =
+            serde_json::from_str(statement).map_err(|_| "InvalidInput")?;
+        let expected: WaveContext = serde_json::from_str(expected).map_err(|_| "InvalidInput")?;
+        let verified = self
+            .0
+            .verify(&statement, proof, &expected, now)
+            .await
+            .map_err(|error| error.to_string())?;
+        serde_json::to_string(verified.context()).map_err(|_| "InvalidInput".into())
+    }
+
+    /// Verify an outcome (`answer`, `close` or `silence`); resolves to the
+    /// verified context as JSON.
+    pub async fn verify_outcome(
+        &self,
+        statement: &str,
+        proof: &[u8],
+        expected: &str,
+        expected_outcome: &str,
+        expected_receipt_digest: &[u8],
+        now: u64,
+    ) -> Result<String, String> {
+        let statement: WaveOutcomeStatement =
+            serde_json::from_str(statement).map_err(|_| "InvalidInput")?;
+        let expected: WaveContext = serde_json::from_str(expected).map_err(|_| "InvalidInput")?;
+        let outcome: WaveOutcome =
+            serde_json::from_value(expected_outcome.into()).map_err(|_| "InvalidInput")?;
+        let digest: [u8; 32] = expected_receipt_digest
+            .try_into()
+            .map_err(|_| "InvalidInput")?;
+        let verified = self
+            .0
+            .verify_outcome(&statement, proof, &expected, outcome, &digest, now)
+            .await
+            .map_err(|error| error.to_string())?;
+        serde_json::to_string(verified.context()).map_err(|_| "InvalidInput".into())
+    }
+}
+
+/// Counterpart verifier. The host builds both checks from authenticated
+/// artifacts; nothing here reads a file, trusts a proof-supplied key or caches
+/// a verdict. Native and browser share this one implementation.
+pub struct WaveVerifier<C: ProofCheck> {
+    policy: WavePolicy,
+    observed_at: u64,
+    authority_until: u64,
+    wave: C,
+    outcome: C,
+}
+
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
+impl WaveVerifier<cvfy::NativeVerifier> {
+    /// Native worker backend from authenticated configurations.
+    pub fn native(
         policy: WavePolicy,
         now: u64,
         authority_until: u64,
         wave: cvfy::NativeVerifierConfig,
         outcome: cvfy::NativeVerifierConfig,
+    ) -> Result<Self, Error> {
+        Self::new(
+            policy,
+            now,
+            authority_until,
+            cvfy::NativeVerifier::new(wave)?,
+            cvfy::NativeVerifier::new(outcome)?,
+        )
+    }
+}
+
+impl<C: ProofCheck> WaveVerifier<C> {
+    /// `authority_until` is the exclusive end of the authenticated policy lease.
+    pub fn new(
+        policy: WavePolicy,
+        now: u64,
+        authority_until: u64,
+        wave: C,
+        outcome: C,
     ) -> Result<Self, Error> {
         policy.validate()?;
         if now < policy.valid_from || now >= policy.valid_until || now >= authority_until {
@@ -247,13 +398,13 @@ impl WaveVerifier {
             policy,
             observed_at: now,
             authority_until,
-            wave: cvfy::NativeVerifier::new(wave)?,
-            outcome: cvfy::NativeVerifier::new(outcome)?,
+            wave,
+            outcome,
         })
     }
 
     /// Verify the counterpart's reservation proof for the independently expected context.
-    pub fn verify(
+    pub async fn verify(
         &self,
         statement: &WaveStatement,
         proof: &[u8],
@@ -264,7 +415,8 @@ impl WaveVerifier {
         validate_context(&self.policy, statement, expected, now, None)?;
         check_certificate(&self.policy, statement)?;
         self.wave
-            .verify(&public_fields(&self.policy, statement, None)?, proof)?;
+            .check(&public_fields(&self.policy, statement, None)?, proof)
+            .await?;
         Ok(VerifiedWaveReservation {
             context: expected.clone(),
         })
@@ -273,7 +425,7 @@ impl WaveVerifier {
     /// Verify a settled outcome and its independently expected original receipt.
     /// Answer proves the recipient signature and sender acknowledgment; Close the
     /// recipient signature; Silence only the sender's refund after the fixed lease.
-    pub fn verify_outcome(
+    pub async fn verify_outcome(
         &self,
         statement: &WaveOutcomeStatement,
         proof: &[u8],
@@ -298,7 +450,7 @@ impl WaveVerifier {
         )?;
         check_certificate(&self.policy, &statement.evidence)?;
         let fields = public_fields(&self.policy, &statement.evidence, Some(statement))?;
-        self.outcome.verify(&fields, proof)?;
+        self.outcome.check(&fields, proof).await?;
         Ok(VerifiedWaveOutcome {
             context: expected.clone(),
             outcome: statement.outcome,
@@ -317,7 +469,6 @@ impl WaveVerifier {
     }
 }
 
-#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 /// The issuer's accepted-state certificate is checked explicitly: the circuit
 /// only requires the bytes to be non-zero.
 fn check_certificate(policy: &WavePolicy, statement: &WaveStatement) -> Result<(), Error> {
@@ -342,7 +493,6 @@ fn check_certificate(policy: &WavePolicy, statement: &WaveStatement) -> Result<(
     .verify(&key, &signature)
 }
 
-#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 /// Ordered exactly as the public parameters of the Noir `wave` and `outcome`
 /// relations; `outcome` adds the outcome code and receipt digest before the
 /// certificate.
@@ -402,7 +552,7 @@ fn public_fields(
     Ok(fields)
 }
 
-#[cfg(all(test, feature = "native-verifier", not(target_arch = "wasm32")))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use czkp::ProofScope;
@@ -512,5 +662,125 @@ mod tests {
             validate_context(&policy(), &late, &expected, 500, Some(WaveOutcome::Close)),
             Err(Error::InvalidInput)
         );
+    }
+
+    use std::cell::Cell;
+
+    /// Counts calls; never a substitute for proof soundness, which the retained
+    /// real-proof round trips establish.
+    struct Backend {
+        calls: Cell<usize>,
+        verdict: Result<(), Error>,
+    }
+    impl ProofCheck for Backend {
+        async fn check(&self, fields: &[PublicField], _proof: &[u8]) -> Result<(), Error> {
+            self.calls.set(self.calls.get() + 1);
+            assert!(!fields.is_empty());
+            self.verdict.clone()
+        }
+    }
+    fn backend(verdict: Result<(), Error>) -> Backend {
+        Backend {
+            calls: Cell::new(0),
+            verdict,
+        }
+    }
+    fn signed() -> (WavePolicy, WaveStatement) {
+        use p256::ecdsa::{Signature, SigningKey, signature::Signer};
+        let key = SigningKey::from_bytes(&[7; 32].into()).unwrap();
+        let point = key.verifying_key().to_encoded_point(false);
+        let mut policy = policy();
+        policy.certificate_key = point.as_bytes()[1..].to_vec();
+        let mut statement = statement();
+        let signature: Signature = key.sign(
+            &czkp::certificate::AcceptedState {
+                community: statement.context.community,
+                owner: statement.context.owner,
+                state: statement.state,
+                scope: policy.proof_scope.circuit_digest,
+                version: statement.version,
+                accepted_at: statement.accepted_at,
+            }
+            .bytes(),
+        );
+        statement.certificate = signature.to_bytes().to_vec();
+        (policy, statement)
+    }
+
+    #[test]
+    fn the_shared_verifier_asks_the_backend_only_after_every_rust_check() {
+        use futures::executor::block_on;
+        let (policy, s) = signed();
+        let expected = s.context.clone();
+        let verifier = |verdict: Result<(), Error>| {
+            WaveVerifier::new(
+                policy.clone(),
+                100,
+                1_000,
+                backend(verdict.clone()),
+                backend(verdict),
+            )
+            .unwrap()
+        };
+        let ok = verifier(Ok(()));
+        let verified = block_on(ok.verify(&s, b"proof", &expected, 130)).unwrap();
+        assert_eq!(verified.context(), &expected);
+        assert_eq!((ok.wave.calls.get(), ok.outcome.calls.get()), (1, 0));
+        // A backend refusal is the verdict.
+        let bad = verifier(Err(Error::CryptoProvider));
+        assert!(matches!(
+            block_on(bad.verify(&s, b"proof", &expected, 130)),
+            Err(Error::CryptoProvider)
+        ));
+        // Context, lease, clock and certificate failures never reach the backend.
+        let mut other = expected.clone();
+        other.nonce = [99; 32];
+        assert!(block_on(ok.verify(&s, b"proof", &other, 130)).is_err());
+        assert!(block_on(ok.verify(&s, b"proof", &expected, 1_000)).is_err());
+        assert!(block_on(ok.verify(&s, b"proof", &expected, 99)).is_err());
+        let mut forged = s.clone();
+        forged.certificate[0] ^= 1;
+        assert!(block_on(ok.verify(&forged, b"proof", &expected, 130)).is_err());
+        assert_eq!(ok.wave.calls.get(), 1);
+        // Outcome: the expected outcome and receipt are checked before the backend.
+        let outcome = WaveOutcomeStatement {
+            evidence: s.clone(),
+            outcome: WaveOutcome::Close,
+            receipt_digest: [21; 32],
+        };
+        assert!(
+            block_on(ok.verify_outcome(
+                &outcome,
+                b"p",
+                &expected,
+                WaveOutcome::Answer,
+                &[21; 32],
+                130
+            ))
+            .is_err()
+        );
+        assert!(
+            block_on(ok.verify_outcome(
+                &outcome,
+                b"p",
+                &expected,
+                WaveOutcome::Close,
+                &[22; 32],
+                130
+            ))
+            .is_err()
+        );
+        assert_eq!(ok.outcome.calls.get(), 0);
+        let done = block_on(ok.verify_outcome(
+            &outcome,
+            b"p",
+            &expected,
+            WaveOutcome::Close,
+            &[21; 32],
+            130,
+        ))
+        .unwrap();
+        assert_eq!(done.outcome(), WaveOutcome::Close);
+        assert_eq!(ok.outcome.calls.get(), 1);
     }
 }
