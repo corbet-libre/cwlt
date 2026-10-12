@@ -5,7 +5,10 @@ use std::cell::Cell;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 mod proof;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
-pub use proof::{AcceptedAccountGenesis, AccountGenesisProof, GenesisRequestMaterial};
+pub use proof::{
+    AcceptedAccountGenesis, AccountGenesisProof, ActivatedAccount, GenesisRequestMaterial,
+    PendingActivation, ReopenedPending,
+};
 
 /// Opaque RAM candidate retaining the exact Engine and private opening. No
 /// proof, signing, serialization, accepted-state or initialization API exists.

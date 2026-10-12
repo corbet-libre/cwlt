@@ -2,10 +2,12 @@
 use super::*;
 mod acceptance;
 pub use acceptance::AcceptedAccountGenesis;
+mod pending;
 use ckmg::wallet_engine::{
     account::{GenesisProofScope, GenesisPublic, PreparedGenesisProof},
     native_prover::NativeProver,
 };
+pub use pending::{ActivatedAccount, PendingActivation, ReopenedPending};
 
 /// Original candidate and locally verified proof, without accepted custody.
 /// The private opening and Engine remain owned together through cancellation.
