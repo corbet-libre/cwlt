@@ -7,7 +7,8 @@
   "exports": {
     "./account": "./runtime/account.mjs",
     "./extensions": "./runtime/extensions.mjs",
-    "./hashes": "./runtime/hashes.mjs"
+    "./hashes": "./runtime/hashes.mjs",
+    "./wave-wallet": "./runtime/wave-wallet.mts"
   },
   "dependencies": {
     "@corbet-labs/czkp": "github:corbet-foss/czkp#main"
