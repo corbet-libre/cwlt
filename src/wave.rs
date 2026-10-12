@@ -145,7 +145,7 @@ impl VerifiedWaveReservation {
     }
 }
 
-#[cfg(feature = "native-verifier")]
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 fn validate_context(
     policy: &WavePolicy,
     statement: &WaveStatement,
@@ -204,15 +204,15 @@ fn validate_context(
 }
 
 /// Public field elements, as in the Noir public ABI: every byte is one field.
-#[cfg(feature = "native-verifier")]
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 type PublicField = [u8; 32];
-#[cfg(feature = "native-verifier")]
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 fn scalar(value: u64) -> PublicField {
     let mut field = [0; 32];
     field[24..].copy_from_slice(&value.to_be_bytes());
     field
 }
-#[cfg(feature = "native-verifier")]
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 fn push_bytes(fields: &mut Vec<PublicField>, value: &[u8]) {
     fields.extend(value.iter().map(|byte| scalar(u64::from(*byte))));
 }
@@ -220,7 +220,7 @@ fn push_bytes(fields: &mut Vec<PublicField>, value: &[u8]) {
 /// Counterpart verifier. The host builds both configurations from authenticated
 /// artifacts; nothing here reads a file, trusts a proof-supplied key or caches
 /// a verdict.
-#[cfg(feature = "native-verifier")]
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 pub struct WaveVerifier {
     policy: WavePolicy,
     observed_at: u64,
@@ -229,7 +229,7 @@ pub struct WaveVerifier {
     outcome: cvfy::NativeVerifier,
 }
 
-#[cfg(feature = "native-verifier")]
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 impl WaveVerifier {
     /// `authority_until` is the exclusive end of the authenticated policy lease.
     pub fn new(
@@ -317,7 +317,7 @@ impl WaveVerifier {
     }
 }
 
-#[cfg(feature = "native-verifier")]
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 /// The issuer's accepted-state certificate is checked explicitly: the circuit
 /// only requires the bytes to be non-zero.
 fn check_certificate(policy: &WavePolicy, statement: &WaveStatement) -> Result<(), Error> {
@@ -342,7 +342,7 @@ fn check_certificate(policy: &WavePolicy, statement: &WaveStatement) -> Result<(
     .verify(&key, &signature)
 }
 
-#[cfg(feature = "native-verifier")]
+#[cfg(all(feature = "native-verifier", not(target_arch = "wasm32")))]
 /// Ordered exactly as the public parameters of the Noir `wave` and `outcome`
 /// relations; `outcome` adds the outcome code and receipt digest before the
 /// certificate.
@@ -402,7 +402,7 @@ fn public_fields(
     Ok(fields)
 }
 
-#[cfg(all(test, feature = "native-verifier"))]
+#[cfg(all(test, feature = "native-verifier", not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use czkp::ProofScope;
