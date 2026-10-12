@@ -4,11 +4,21 @@ use crate::Error;
 use czkp::poseidon::{integer, limbs};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+/// The committed standing fields (czkp::standing::State without the admission day).
+#[derive(Clone, Copy, Zeroize)]
+pub(super) struct Standing {
+    pub(super) g: u64,
+    pub(super) a: u64,
+    pub(super) c: u64,
+    pub(super) pr: u64,
+    pub(super) pg: u64,
+    pub(super) lc: u64,
+    pub(super) day: u64,
+}
+
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub(super) struct Opening {
-    pub(super) available: u32,
     pub(super) reserved: u128,
-    pub(super) debt: u64,
     pub(super) accepted: u64,
     pub(super) declined: u64,
     pub(super) punished: u64,
@@ -20,10 +30,8 @@ pub(super) struct Opening {
     pub(super) incoming_count: u64,
     pub(super) pair_root: Field,
     pub(super) pair_count: u64,
-    pub(super) frontier: u64,
     pub(super) created_at: u64,
-    pub(super) admission_epoch: u64,
-    pub(super) admissions: u32,
+    pub(super) standing: Standing,
     pub(super) blind: Field,
 }
 
@@ -39,13 +47,17 @@ impl Opening {
     ) -> Result<Field, Error> {
         if version > czkp::MAX_INTEGER
             || [
-                self.debt,
                 self.accepted,
                 self.declined,
                 self.punished,
-                self.frontier,
                 self.created_at,
-                self.admission_epoch,
+                self.standing.g,
+                self.standing.a,
+                self.standing.c,
+                self.standing.pr,
+                self.standing.pg,
+                self.standing.lc,
+                self.standing.day,
             ]
             .into_iter()
             .any(|v| v > czkp::MAX_INTEGER)
@@ -60,9 +72,7 @@ impl Opening {
             registered_secret,
             integer(version),
             extension.hash()?,
-            integer(self.available.into()),
             hashes::integer128(self.reserved),
-            integer(self.debt),
             integer(self.accepted),
             integer(self.declined),
             integer(self.punished),
@@ -76,10 +86,14 @@ impl Opening {
             integer(self.incoming_count),
             self.pair_root,
             integer(self.pair_count),
-            integer(self.frontier),
             integer(self.created_at),
-            integer(self.admission_epoch),
-            integer(self.admissions.into()),
+            integer(self.standing.g),
+            integer(self.standing.a),
+            integer(self.standing.c),
+            integer(self.standing.pr),
+            integer(self.standing.pg),
+            integer(self.standing.lc),
+            integer(self.standing.day),
         ]);
         fields.extend(limbs(&self.blind));
         let result = hashes::hash(30, &fields);

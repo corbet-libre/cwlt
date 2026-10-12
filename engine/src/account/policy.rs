@@ -48,6 +48,8 @@ impl AccountPolicy {
             || self.policy_valid_from >= self.policy_valid_until
             || self.newcomer_period == 0
             || self.rate_window == 0
+            // Standing counts days: the proof window is at most one day.
+            || self.rate_window > 86_400
             || self.refill_period == 0
             || self.abandon_after < self.rate_window
             || self.newcomer_admissions == 0
@@ -150,8 +152,19 @@ pub struct ExtensionPolicy {
     pub delay: u64,
     /// Original minimum batch size.
     pub batch: u8,
+    /// Digest of the rulebook-signed standing policy (`czkp::standing::Policy::digest`).
+    pub standing: [u8; 32],
 }
 impl ExtensionPolicy {
+    /// Digest of the rulebook-signed standing parameters under the account-state
+    /// domain, as the circuit binds it; tables are derived by czkp's owner function.
+    pub fn standing_digest(params: czkp::standing::Params) -> Result<[u8; 32], Error> {
+        czkp::standing::Policy::derive(params)
+            .map_err(|_| Error::Invalid)?
+            .digest(&hashes::domain(b"cfrm.account-state.v2"))
+            .map_err(|_| Error::Crypto)
+    }
+
     pub(super) fn hash(&self) -> Result<Field, Error> {
         if self.revision == 0
             || self.revision > czkp::MAX_INTEGER
@@ -160,10 +173,12 @@ impl ExtensionPolicy {
             || self.delay == 0
             || self.delay > czkp::MAX_INTEGER
             || !(2..=64).contains(&self.batch)
+            || self.standing == [0; 32]
         {
             return Err(Error::Invalid);
         }
-        use czkp::poseidon::integer;
+        use czkp::poseidon::{integer, limbs};
+        let digest = limbs(&self.standing);
         hashes::hash(
             31,
             &[
@@ -172,6 +187,8 @@ impl ExtensionPolicy {
                 integer(self.change_cost.into()),
                 integer(self.delay),
                 integer(self.batch.into()),
+                digest[0],
+                digest[1],
             ],
         )
     }

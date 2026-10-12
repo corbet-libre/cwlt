@@ -148,6 +148,29 @@ pub(super) fn write_context(w: &mut Writer, c: &GenesisContext) -> Result<(), Er
     w.u32(e.change_cost);
     w.u64(e.delay);
     w.bytes(&[e.batch]);
+    w.bytes(&e.standing);
+    let sp = &c.standing;
+    for v in [
+        sp.c0,
+        sp.h_a,
+        sp.h_g,
+        sp.n_half,
+        sp.n_c,
+        sp.e_q,
+        sp.r_max,
+        sp.r_age,
+        sp.c_max_q,
+        sp.c_vet,
+        sp.age_vet,
+        sp.boost_q,
+        sp.boost_days,
+        sp.slope_q,
+        sp.mid_q,
+        sp.kappa_q,
+        sp.loan_use_q,
+    ] {
+        w.u64(v);
+    }
     let r = &c.enrollment;
     w.bytes(&r.member);
     w.bytes(&r.key);
@@ -190,6 +213,26 @@ pub(super) fn read_context(r: &mut Reader<'_>) -> Result<GenesisContext, Error> 
         change_cost: r.u32()?,
         delay: r.u64()?,
         batch: r.array::<1>()?[0],
+        standing: r.array()?,
+    };
+    let standing = czkp::standing::Params {
+        c0: r.u64()?,
+        h_a: r.u64()?,
+        h_g: r.u64()?,
+        n_half: r.u64()?,
+        n_c: r.u64()?,
+        e_q: r.u64()?,
+        r_max: r.u64()?,
+        r_age: r.u64()?,
+        c_max_q: r.u64()?,
+        c_vet: r.u64()?,
+        age_vet: r.u64()?,
+        boost_q: r.u64()?,
+        boost_days: r.u64()?,
+        slope_q: r.u64()?,
+        mid_q: r.u64()?,
+        kappa_q: r.u64()?,
+        loan_use_q: r.u64()?,
     };
     let mut enrollment = Enrollment {
         member: r.array()?,
@@ -210,6 +253,7 @@ pub(super) fn read_context(r: &mut Reader<'_>) -> Result<GenesisContext, Error> 
         owner,
         policy,
         extension,
+        standing,
         enrollment,
         enrollment_root: r.array()?,
         checked_at: r.u64()?,

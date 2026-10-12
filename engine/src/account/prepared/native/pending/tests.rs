@@ -15,7 +15,7 @@ fn proven(engine: &Engine, context: &GenesisContext) -> PreparedGenesisProof {
                 circuit_digest: [0xC3; 32],
                 verifying_key_digest: [0xD4; 32],
             },
-            public_inputs: vec![[1; 32]; 345],
+            public_inputs: vec![[1; 32]; 377],
             proof: vec![9; 14_000],
         },
     }

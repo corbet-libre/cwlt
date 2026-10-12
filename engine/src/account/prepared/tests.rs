@@ -32,7 +32,9 @@ fn context(engine: &Engine) -> GenesisContext {
             change_cost: 1,
             delay: 100,
             batch: 2,
+            standing: ExtensionPolicy::standing_digest(czkp::standing::Params::default()).unwrap(),
         },
+        standing: czkp::standing::Params::default(),
         enrollment: Enrollment {
             member: [3; 32],
             key: [5; 64],
@@ -85,10 +87,9 @@ fn original_genesis_is_a_private_candidate_and_engine_sealed_format_stays_uninit
     let sealed_before = engine.seal().unwrap();
     let prepared = engine.prepare_genesis(context.clone()).unwrap();
     prepared.check_context(&engine, &context, 101).unwrap();
-    assert_eq!(prepared.opening.available, 20);
     assert_eq!(prepared.opening.reserved, 0);
-    assert_eq!(prepared.opening.debt, 0);
-    assert_eq!(prepared.opening.frontier, 200);
+    assert_eq!(prepared.opening.standing.a, 2 << 16);
+    assert_eq!(prepared.opening.standing.day, 0);
     assert_eq!(prepared.opening.created_at, 200);
     assert_eq!(prepared.opening.outgoing_count, 1);
     assert_eq!(prepared.opening.inbox, [0; 32]);
@@ -129,6 +130,13 @@ fn wrong_scope_owner_registered_secret_root_path_index_and_policy_refuse() {
     assert!(engine.prepare_genesis(changed).is_err());
     let mut changed = original.clone();
     changed.extension.batch = 1;
+    assert!(engine.prepare_genesis(changed).is_err());
+    // Standing parameters must hash to the rulebook-signed digest.
+    let mut changed = original.clone();
+    changed.standing.n_half += 1;
+    assert!(engine.prepare_genesis(changed).is_err());
+    let mut changed = original.clone();
+    changed.policy.rate_window = 86_401;
     assert!(engine.prepare_genesis(changed).is_err());
     let mut changed = original.clone();
     changed.enrollment.path[0] = [0xff; 32];

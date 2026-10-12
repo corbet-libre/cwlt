@@ -41,6 +41,7 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("change_cost", uint(32)),
         ("delay", uint(64)),
         ("batch", uint(8)),
+        ("standing", bytes(32)),
     ]);
     let enrollment = structure(&[
         ("key", bytes(64)),
@@ -51,10 +52,40 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("path", array(AbiType::Field, 32)),
         ("index", uint(32)),
     ]);
+    let standing = structure(&[
+        ("g", uint(64)),
+        ("a", uint(64)),
+        ("c", uint(64)),
+        ("pr", uint(64)),
+        ("pg", uint(64)),
+        ("lc", uint(64)),
+        ("day", uint(64)),
+    ]);
+    let standing_policy = structure(&[
+        ("c0", uint(64)),
+        ("h_a", uint(64)),
+        ("h_g", uint(64)),
+        ("n_half", uint(64)),
+        ("n_c", uint(64)),
+        ("e_q", uint(64)),
+        ("r_max", uint(64)),
+        ("r_age", uint(64)),
+        ("c_max_q", uint(64)),
+        ("c_vet", uint(64)),
+        ("age_vet", uint(64)),
+        ("boost_q", uint(64)),
+        ("boost_days", uint(64)),
+        ("slope_q", uint(64)),
+        ("mid_q", uint(64)),
+        ("kappa_q", uint(64)),
+        ("loan_use_q", uint(64)),
+        ("factor", uint(64)),
+        ("trust", array(uint(64), 65)),
+        ("g_table", array(uint(64), 64)),
+        ("a_table", array(uint(64), 64)),
+    ]);
     let opening = structure(&[
-        ("available", uint(32)),
         ("reserved", uint(128)),
-        ("debt", uint(64)),
         ("accepted", uint(64)),
         ("declined", uint(64)),
         ("punished", uint(64)),
@@ -66,10 +97,8 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("incoming_count", uint(64)),
         ("pair_root", AbiType::Field),
         ("pair_count", uint(64)),
-        ("frontier", uint(64)),
         ("created_at", uint(64)),
-        ("admission_epoch", uint(64)),
-        ("admissions", uint(32)),
+        ("standing", standing),
         ("blind", bytes(32)),
     ]);
     let slot = structure(&[
@@ -152,6 +181,7 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("pair_exists", AbiType::Boolean),
         ("resolution", resolution),
         ("acknowledgment", ack),
+        ("standing_policy", standing_policy),
     ];
     public
         .into_iter()
@@ -230,7 +260,7 @@ pub(super) fn public_inputs(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Erro
             )?;
         }
     }
-    if public.len() != 345 {
+    if public.len() != 377 {
         return Err(Error::Invalid);
     }
     for field in &public {
@@ -263,7 +293,7 @@ pub(super) fn public_only(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Error>
             &mut result,
         )?;
     }
-    if result.len() != 345 {
+    if result.len() != 377 {
         return Err(Error::Invalid);
     }
     Ok(result)

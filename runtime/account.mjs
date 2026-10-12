@@ -9,11 +9,13 @@ export const emptyMapWitness = () => ({ leaf: [0n, 0n, 0n, 0n], index: 0n,
   path: Array(32).fill(0n), append_path: Array(32).fill(0n) });
 export const enrollmentInput = entry => ({ key: entry.key, secret_hash: entry.secretHash, start: entry.start,
   end: entry.end, delegation_digest: entry.delegationDigest, path: entry.path, index: entry.index });
-export const openingInput = s => ({ available: s.available, reserved: s.reserved,
+// Standing v5 account state: the shared pool replaces the token balance.
+export const openingInput = s => ({ reserved: s.reserved,
   outgoing_root: s.outgoingRoot, outgoing_count: s.outgoingCount,
   incoming_root: s.incomingRoot, incoming_count: s.incomingCount,
-  pair_root: s.pairRoot, pair_count: s.pairCount, frontier: s.frontier,
-  created_at: s.createdAt, admission_epoch: s.admissionEpoch, admissions: s.admissions, blind: s.blind });
+  pair_root: s.pairRoot, pair_count: s.pairCount,
+  created_at: s.createdAt, standing: standingInput(s.standing), blind: s.blind });
+export const standingInput = t => ({ g: t.g, a: t.a, c: t.c, pr: t.pr, pg: t.pg, lc: t.lc, day: t.day });
 export const slotInput = s => ({ role: s.role, peer: s.peer, nonce: s.nonce, group: s.group,
   contact_policy: s.contactPolicy, amount: s.amount, phase: s.phase, outcome: s.outcome??0, answered:s.answered??false, self_punished:s.selfPunished??false,
   admitted_at: s.admittedAt, expires_at: s.expiresAt, peer_authority: s.peerAuthority, owner_authority: s.ownerAuthority });
@@ -25,7 +27,7 @@ const policyInput = p => Object.fromEntries(POLICY_WIRE.map(([key, wire]) => [wi
 // Local witness state. It is never accepted by an operator without a real proof
 // plus a durable accepted-state comparison. Returned candidates do not mutate it.
 export class AccountWitness {
-  static async genesis({ hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now, extension, transition }) {
+  static async genesis({ hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now, extension, transition, standing }) {
     const value = new this();
     Object.assign(value, { extension, transition, hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now: BigInt(now), version: 0n });
     value.owner = checkpoint.entries[ownerIndex];
@@ -35,12 +37,21 @@ export class AccountWitness {
     const empty = await IndexedMap.create(hashes);
     value.outgoing = empty; value.incoming = empty.clone(); value.pairs = empty.clone();
     value.slots = new Map();
-    value.opening = { available: BigInt(policy.initialCredit), reserved: 0n,
+    if (BigInt(policy.rateWindow) > 86400n) throw new Error('Proof window must not exceed one day');
+    const horizon = validityHorizon(now, policy);
+    value.opening = { reserved: 0n,
       outgoingRoot: empty.root, outgoingCount: 1n, incomingRoot: empty.root, incomingCount: 1n,
-      pairRoot: empty.root, pairCount: 1n, frontier: validityHorizon(now, policy), createdAt: validityHorizon(now, policy),
-      admissionEpoch: BigInt(now) / BigInt(policy.rateWindow), admissions: 0n, blind: random() };
+      pairRoot: empty.root, pairCount: 1n, createdAt: horizon,
+      standing: { g: 0n, a: (BigInt(standing.c0) - 1n) << 16n, c: 0n, pr: 0n, pg: 0n, lc: 0n, day: horizon / 86400n }, blind: random() };
+    value.standing = standing;
     value.commitment = await value.commit(value.opening, 0n);
     const input = value.input(value.opening.blind, now);
+    // The planner derives the tables from the signed parameters (czkp's owner function).
+    const first = transition({ old: { reserved: 0, accepted: 0, declined: 0, punished: 0 },
+      standing: Object.fromEntries(Object.entries(value.opening.standing).map(([k, v]) => [k, Number(v)])), params: standing,
+      createdAt: Number(value.opening.createdAt), now: Number(now), action: 11, amount: 0, role: 0, phase: 1, outcome: 0,
+      answered: false, selfPunished: false, kind: 0, changeCost: 1 });
+    input.standing_policy = first.policy;
     Object.assign(input, { genesis: true, previous_state: zeros(), next_state: fieldBytes(value.commitment),
       previous_version: 0n, next_version: 0n });
     return { input, statement: statementFromInput(input), next: value };
@@ -94,13 +105,8 @@ export class AccountWitness {
   }
   at(now) {
     const at = integer(now, 64), p = this.policy, o = this.opening;
-    if (at > SAFE || o.createdAt === 0n || o.createdAt > o.frontier || o.frontier > validityHorizon(now, p)
-        || at < BigInt(p.policyValidFrom) || at >= BigInt(p.policyValidUntil)) throw new Error('Account time/policy');
-    const mature = at >= o.createdAt && at - o.createdAt >= BigInt(p.newcomerPeriod);
-    const capacity = BigInt(mature ? p.maximumAvailable : p.initialCredit);
-    if (o.available + o.reserved > capacity) throw new Error('Account total capacity');
-    return { now: at, capacity, admissionLimit: BigInt(mature ? p.maximumAdmissions : p.newcomerAdmissions),
-      epoch: at / BigInt(p.rateWindow) };
+    if (at > SAFE || o.createdAt === 0n || at < BigInt(p.policyValidFrom) || at >= BigInt(p.policyValidUntil)) throw new Error('Account time/policy');
+    return { now: at };
   }
   async reserve({ peerIndex, role, nonce, group, contactPolicy, openedAt, expiresAt, now = this.now }) {
     if (role !== 0 && role !== 1) throw new Error('Reservation role');
@@ -111,15 +117,12 @@ export class AccountWitness {
     if (opened === 0n || opened > at.now || expiry <= at.now || expiry >= BigInt(this.policy.policyValidUntil)
         || validityHorizon(now, this.policy) > expiry
         || (role === 0 && (opened !== at.now || expiry !== at.now + BigInt(this.policy.abandonAfter)))) throw new Error('Reservation lease');
-    const admissions = this.opening.admissionEpoch === at.epoch ? this.opening.admissions + 1n : 1n;
-    if (admissions > at.admissionLimit) throw new Error('Shared admission rate exhausted');
     const peer = this.checkpoint.entries[peerIndex];
     if (!peer || peer === this.owner) throw new Error('Current peer enrollment required');
     await verifyEnrollmentPath(peer, this.community, this.checkpoint.root, this.hashes);
     const event = await this.hashes.marker(this.community, this.ownerSecret, this.owner.member, peer.member, nonce);
     const pair = await this.hashes.pairKey(this.community, this.owner.member, this.ownerSecret, peer.member);
     const amount = BigInt(role === 0 ? this.policy.outgoingReservation : this.policy.incomingReservation);
-    if (this.opening.available < amount) throw new Error('Insufficient shared available capacity');
     const slot = { role, peer: peer.member, nonce, group, contactPolicy, amount, phase: 1, outcome: 0, answered:false,selfPunished:false,
       admittedAt: opened, expiresAt: expiry, peerAuthority: peer.leaf, ownerAuthority: this.owner.leaf,
       peerEnrollment: structuredClone(peer), ownerEnrollment: structuredClone(this.owner) };
@@ -132,15 +135,15 @@ export class AccountWitness {
     if (existing) { input.pair_exists = true; input.pair_map = this.pairs.witness(existing[0]); }
     else { const added = await this.pairs.insert(pair, 1n); input.pair_map = added.witness; next.pairs = added.next; }
     if (role === 0) next.outgoing = inserted.next; else next.incoming = inserted.next;
-    next.opening.available -= amount; next.opening.reserved += amount;
-    next.opening.admissionEpoch = at.epoch; next.opening.admissions = admissions;
+    // The planner (finish) applies the pool check against the standing cap.
+    next.opening.reserved += amount;
     next.slots.set(event.toString(), slot);
     const result = await this.finish(next, input); result.event = event; return result;
   }
   async change(event, action, resolution, acknowledgment, now = this.now, peerEnrollment, receiptOwnerEnrollment) {
     const at = this.at(now);
     const oldSlot = this.slots.get(event.toString()); if (!oldSlot) throw new Error('Unknown private obligation');
-    if (![2, 3, 4, 5].includes(action) || oldSlot.phase !== ([2, 4].includes(action) ? 1 : 2)) throw new Error('Invalid obligation phase');
+    if (![2, 3, 4, 5].includes(action) || (action === 5 ? ![2, 8].includes(oldSlot.phase) : oldSlot.phase !== ([2, 4].includes(action) ? 1 : 2))) throw new Error('Invalid obligation phase');
     if (at.now < oldSlot.admittedAt) throw new Error('Future obligation');
     const expired = at.now >= oldSlot.expiresAt;
     const withinHorizon = validityHorizon(now, this.policy) <= oldSlot.expiresAt;
@@ -171,11 +174,9 @@ export class AccountWitness {
       if (!resolution) throw new Error('Authenticated receipt required');
       input.resolution = resolutionInput(resolution);
       if (acknowledgment) input.acknowledgment = { issued_at: acknowledgment.issuedAt, signature: acknowledgment.signature };
-      next.opening.available += slot.amount;
       next.opening.reserved -= slot.amount;
       input.settlement_marker = fieldBytes(event);
     } else if (action === 4 || action === 5) {
-      next.opening.available += slot.amount;
       next.opening.reserved -= slot.amount;
       input.settlement_marker = fieldBytes(event);
     }
@@ -187,13 +188,6 @@ export class AccountWitness {
   }
   cancel(event, now) { return this.change(event, 4, undefined, undefined, now); }
   expire(event, now) { return this.change(event, 5, undefined, undefined, now); }
-  async refill(now = this.now) {
-    const at = this.at(now);
-    if (at.now < this.opening.frontier || at.now - this.opening.frontier < BigInt(this.policy.refillPeriod)) throw new Error('Refill not due');
-    const headroom = at.capacity - this.opening.available - this.opening.reserved;
-    const units = BigInt(this.policy.refillUnits), issued = headroom < units ? headroom : units;
-    const input = this.input(random(), now), next = this.clone(); input.action = 6;
-    next.opening.available += issued; next.opening.frontier = validityHorizon(now, this.policy);
-    return this.finish(next, input);
-  }
+  // Retired: slots return on settlement, not by a refill clock.
+  async refill() { throw new Error('Refill is retired: the shared pool replaces the token balance'); }
 }

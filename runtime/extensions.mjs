@@ -8,7 +8,7 @@ import {cat,be,sha,hex,zeros,random} from '@corbet-labs/czkp/encoding';
 export {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput};
 export {checkpointFromVerified} from './hashes.mjs';
 const bytes=v=>Uint8Array.from(v);
-const extInput=p=>({revision:p.revision,quorum:p.publicRecordQuorum,change_cost:p.changeTokenCost,delay:p.depositDelaySeconds,batch:p.minimumDepositBatch});
+const extInput=p=>({revision:p.revision,quorum:p.publicRecordQuorum,change_cost:p.changeTokenCost,delay:p.depositDelaySeconds,batch:p.minimumDepositBatch,standing:p.standingPolicyDigest});
 export {extInput};
 export const advance=(community,owner,root,commitment)=>sha(cat(new TextEncoder().encode('cblc.obligation-inbox.v2\0'),community,owner,root,commitment));
 export function contactBytes(community,owner,slot) {
@@ -20,34 +20,39 @@ export function contactBytes(community,owner,slot) {
 export function extensionHashes(api) {
   const h=accountHashes(api);
   h.raw=async v=>fieldValue((await api.poseidon2Hash({inputs:v.map(n=>fieldBytes(BigInt(n)))})).hash);
-  h.extension=p=>h.hash(31,[p.revision,p.publicRecordQuorum,p.changeTokenCost,p.depositDelaySeconds,p.minimumDepositBatch].map(BigInt));
+  h.extension=p=>h.hash(31,[...[p.revision,p.publicRecordQuorum,p.changeTokenCost,p.depositDelaySeconds,p.minimumDepositBatch].map(BigInt),...limbs32(p.standingPolicyDigest)]);
   h.delivery=(community,recipient,reporter,slot,kind)=>h.hash(32,[...limbs32(community),...limbs32(recipient),...limbs32(reporter),...limbs32(slot.nonce),...limbs32(slot.group),BigInt(kind)]);
   h.authorization=async(community,owner,secret,slot,kind)=>h.hash(33,[await h.marker(community,secret,owner,slot.peer,slot.nonce),await h.delivery(community,slot.peer,owner,slot,kind),BigInt(kind)]);
   h.obligation=(event,s,phase)=>h.hash(4,[event,BigInt(s.role),...limbs32(s.peer),...limbs32(s.nonce),...limbs32(s.group),...limbs32(s.contactPolicy),BigInt(s.amount),BigInt(phase),BigInt(s.outcome??0),s.answered?1n:0n,s.selfPunished?1n:0n,BigInt(s.admittedAt),BigInt(s.expiresAt),s.peerAuthority,s.ownerAuthority]);
   return h;
 }
-const balanceKeys=['available','reserved','debt','accepted','declined','punished'];
-const extendedOpening=s=>({...openingInput(s),...Object.fromEntries(balanceKeys.slice(2).map(k=>[k,s[k]])),inbox:s.inbox,authorization:s.authorization});
+const balanceKeys=['reserved','accepted','declined','punished'];
+const extendedOpening=s=>({...openingInput(s),...Object.fromEntries(balanceKeys.slice(1).map(k=>[k,s[k]])),inbox:s.inbox,authorization:s.authorization});
+const standingKeys=['g','a','c','pr','pg','lc','day'];
 export class ExtensionWitness extends AccountWitness {
   async commit(o,version) {
-    for(const k of balanceKeys.slice(2))o[k]??=0n;
+    for(const k of balanceKeys.slice(1))o[k]??=0n;
     o.inbox??=zeros();o.authorization??=0n;
     return this.hashes.hash(30,[...limbs32(this.community),...limbs32(this.owner.member),...limbs32(this.statePolicyHash),fieldValue(this.owner.secretHash),BigInt(version),
       await this.hashes.extension(this.extension),...balanceKeys.map(k=>BigInt(o[k])),...limbs32(o.inbox),o.authorization,
-      o.outgoingRoot,o.outgoingCount,o.incomingRoot,o.incomingCount,o.pairRoot,o.pairCount,o.frontier,o.createdAt,o.admissionEpoch,o.admissions,...limbs32(o.blind)]);
+      o.outgoingRoot,o.outgoingCount,o.incomingRoot,o.incomingCount,o.pairRoot,o.pairCount,o.createdAt,...standingKeys.map(k=>BigInt(o.standing[k])),...limbs32(o.blind)]);
   }
   input(blind,now) {
     return {...super.input(blind,now),old:extendedOpening(this.opening),extension:extInput(this.extension),previous_inbox:this.opening.inbox,inbox:this.opening.inbox,
       consume_only:false,change_binding:zeros(),delivery_kind:0,contact_signature:new Uint8Array(64)};
   }
   plan(input) {
-    const s=input.slot,old=Object.fromEntries(balanceKeys.map(k=>[k,Number(this.opening[k])]));
-    return this.transition({old,action:input.action,capacity:Number(this.at(input.now).capacity),amount:Number(s.amount),role:Number(s.role),phase:Number(s.phase),outcome:Number(s.outcome),
-      answered:s.answered,selfPunished:s.self_punished,kind:input.action===10?Number(input.delivery_kind):Number(input.resolution.kind),changeCost:this.extension.changeTokenCost,refillUnits:this.policy.refillUnits});
+    const s=input.slot,old=Object.fromEntries(balanceKeys.map(k=>[k,Number(this.opening[k])])),
+      standing=Object.fromEntries(standingKeys.map(k=>[k,Number(this.opening.standing[k])]));
+    return this.transition({old,standing,params:this.standing,createdAt:Number(this.opening.createdAt),now:Number(input.now),action:input.action,amount:Number(s.amount),role:Number(s.role),
+      phase:Number(s.phase),outcome:Number(s.outcome),answered:s.answered,selfPunished:s.self_punished,
+      kind:input.action===10?Number(input.delivery_kind):Number(input.resolution.kind),changeCost:this.extension.changeTokenCost});
   }
   async finish(next,input) {
     const plan=this.plan(input);
     for(const k of balanceKeys)next.opening[k]=BigInt(plan.balances[k]);
+    next.opening.standing=Object.fromEntries(standingKeys.map(k=>[k,BigInt(plan.standing[k])]));
+    input.standing_policy=plan.policy;
     next.opening.inbox=bytes(input.inbox);
     next.opening.authorization=plan.authorization?await this.hashes.authorization(this.community,this.owner.member,this.ownerSecret,
       {peer:bytes(input.slot.peer),nonce:bytes(input.slot.nonce),group:bytes(input.slot.group)},plan.authorization):0n;

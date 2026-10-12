@@ -71,7 +71,7 @@ impl PreparedGenesis {
             policy_digest: self.policy_digest,
             enrollment_root: self.context.enrollment_root,
             now: self.context.checked_at,
-            valid_until: self.opening.frontier,
+            valid_until: self.opening.created_at,
             genesis: true,
             previous_version: 0,
             next_version: 0,
@@ -114,6 +114,7 @@ struct Extension {
     change_cost: u32,
     delay: u64,
     batch: u8,
+    standing: [u8; 32],
 }
 #[derive(Serialize)]
 struct Public<'a> {
@@ -171,9 +172,7 @@ fn bytes64<S: Serializer>(bytes: &&[u8; 64], s: S) -> Result<S::Ok, S::Error> {
 }
 #[derive(Serialize)]
 struct PrivateOpening<'a> {
-    available: u32,
     reserved: u128,
-    debt: u64,
     accepted: u64,
     declined: u64,
     punished: u64,
@@ -185,11 +184,43 @@ struct PrivateOpening<'a> {
     incoming_count: u64,
     pair_root: Field<'a>,
     pair_count: u64,
-    frontier: u64,
     created_at: u64,
-    admission_epoch: u64,
-    admissions: u32,
+    standing: StandingJson,
     blind: &'a [u8; 32],
+}
+#[derive(Serialize)]
+struct StandingJson {
+    g: u64,
+    a: u64,
+    c: u64,
+    pr: u64,
+    pg: u64,
+    lc: u64,
+    day: u64,
+}
+#[derive(Serialize)]
+struct StandingPolicyJson {
+    c0: u64,
+    h_a: u64,
+    h_g: u64,
+    n_half: u64,
+    n_c: u64,
+    e_q: u64,
+    r_max: u64,
+    r_age: u64,
+    c_max_q: u64,
+    c_vet: u64,
+    age_vet: u64,
+    boost_q: u64,
+    boost_days: u64,
+    slope_q: u64,
+    mid_q: u64,
+    kappa_q: u64,
+    loan_use_q: u64,
+    factor: u64,
+    trust: Vec<u64>,
+    g_table: Vec<u64>,
+    a_table: Vec<u64>,
 }
 #[derive(Serialize)]
 struct Slot {
@@ -248,6 +279,33 @@ struct Witness<'a> {
     pair_exists: bool,
     resolution: Resolution,
     acknowledgment: Ack,
+    standing_policy: StandingPolicyJson,
+}
+fn standing_json(policy: &czkp::standing::Policy) -> Result<StandingPolicyJson, Error> {
+    let p = &policy.params;
+    Ok(StandingPolicyJson {
+        c0: p.c0,
+        h_a: p.h_a,
+        h_g: p.h_g,
+        n_half: p.n_half,
+        n_c: p.n_c,
+        e_q: p.e_q,
+        r_max: p.r_max,
+        r_age: p.r_age,
+        c_max_q: p.c_max_q,
+        c_vet: p.c_vet,
+        age_vet: p.age_vet,
+        boost_q: p.boost_q,
+        boost_days: p.boost_days,
+        slope_q: p.slope_q,
+        mid_q: p.mid_q,
+        kappa_q: p.kappa_q,
+        loan_use_q: p.loan_use_q,
+        factor: policy.factor,
+        trust: policy.trust.to_vec(),
+        g_table: policy.g_table.to_vec(),
+        a_table: policy.a_table.to_vec(),
+    })
 }
 fn row(enrollment: &Enrollment) -> Row<'_> {
     Row {
@@ -287,6 +345,8 @@ impl PreparedGenesis {
         let p = &context.policy;
         let ext = &context.extension;
         let o = &self.opening;
+        let standing =
+            czkp::standing::Policy::derive(context.standing).map_err(|_| Error::Invalid)?;
         let statement = self.genesis_public();
         let public = Public {
             extension: Extension {
@@ -295,6 +355,7 @@ impl PreparedGenesis {
                 change_cost: ext.change_cost,
                 delay: ext.delay,
                 batch: ext.batch,
+                standing: ext.standing,
             },
             previous_inbox: [0; 32],
             inbox: [0; 32],
@@ -338,9 +399,7 @@ impl PreparedGenesis {
             delivery_kind: 0,
             contact_signature: vec![0; 64],
             old: PrivateOpening {
-                available: o.available,
                 reserved: o.reserved,
-                debt: o.debt,
                 accepted: o.accepted,
                 declined: o.declined,
                 punished: o.punished,
@@ -352,10 +411,16 @@ impl PreparedGenesis {
                 incoming_count: o.incoming_count,
                 pair_root: Field(&o.pair_root),
                 pair_count: o.pair_count,
-                frontier: o.frontier,
                 created_at: o.created_at,
-                admission_epoch: o.admission_epoch,
-                admissions: o.admissions,
+                standing: StandingJson {
+                    g: o.standing.g,
+                    a: o.standing.a,
+                    c: o.standing.c,
+                    pr: o.standing.pr,
+                    pg: o.standing.pg,
+                    lc: o.standing.lc,
+                    day: o.standing.day,
+                },
                 blind: &o.blind,
             },
             new_blind: &o.blind,
@@ -391,6 +456,7 @@ impl PreparedGenesis {
                 issued_at: context.checked_at,
                 signature: vec![0; 64],
             },
+            standing_policy: standing_json(&standing)?,
         };
         let input = Zeroizing::new(serde_json::to_string(&witness).map_err(|_| Error::Invalid)?);
         let proof = prover.prove(input, expected, deadline)?;

@@ -2,7 +2,7 @@
 use super::{
     Field, hashes,
     maps::IndexedMap,
-    opening::Opening,
+    opening::{Opening, Standing},
     policy::{AccountPolicy, ExtensionPolicy},
 };
 use crate::{Engine, Error, sealing};
@@ -54,6 +54,9 @@ pub struct GenesisContext {
     pub policy: AccountPolicy,
     /// Current published extension policy data.
     pub extension: ExtensionPolicy,
+    /// The rulebook-signed standing parameters; their digest must equal
+    /// `extension.standing`. The tables are derived here by czkp's single owner function.
+    pub standing: czkp::standing::Params,
     /// Original published enrollment row for this owner.
     pub enrollment: Enrollment,
     /// Independently authenticated common enrollment root.
@@ -113,9 +116,7 @@ impl Engine {
         let pairs = IndexedMap::create()?;
         let horizon = context.policy.horizon(context.checked_at)?;
         let opening = Opening {
-            available: context.policy.initial_credit,
             reserved: 0,
-            debt: 0,
             accepted: 0,
             declined: 0,
             punished: 0,
@@ -127,10 +128,17 @@ impl Engine {
             incoming_count: incoming.count(),
             pair_root: pairs.root(),
             pair_count: pairs.count(),
-            frontier: horizon,
             created_at: horizon,
-            admission_epoch: context.checked_at / context.policy.rate_window,
-            admissions: 0,
+            standing: Standing {
+                g: 0,
+                // Starter loan: the newcomer cap above the first slot, in Q16.
+                a: (context.standing.c0 - 1) << 16,
+                c: 0,
+                pr: 0,
+                pg: 0,
+                lc: 0,
+                day: horizon / 86_400,
+            },
             blind,
         };
         use zeroize::Zeroize;
@@ -226,6 +234,9 @@ fn validate_context(context: &GenesisContext, seed: &Field) -> Result<Field, Err
     context.policy.bytes(&community)?;
     context.policy.horizon(context.checked_at)?;
     context.extension.hash()?;
+    if ExtensionPolicy::standing_digest(context.standing)? != context.extension.standing {
+        return Err(Error::Invalid);
+    }
     let row = &context.enrollment;
     if row.starts_at == 0
         || row.starts_at >= row.expires_at

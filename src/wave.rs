@@ -15,6 +15,8 @@ pub struct ExtensionPolicy {
     pub change_token_cost: u32,
     pub deposit_delay_seconds: u64,
     pub minimum_deposit_batch: u8,
+    /// Digest of the rulebook-signed standing policy.
+    pub standing_policy_digest: [u8; 32],
 }
 impl ExtensionPolicy {
     pub fn validate(&self) -> Result<(), Error> {
@@ -25,6 +27,7 @@ impl ExtensionPolicy {
             || self.deposit_delay_seconds == 0
             || self.deposit_delay_seconds > czkp::MAX_INTEGER
             || !(2..=64).contains(&self.minimum_deposit_batch)
+            || self.standing_policy_digest == [0; 32]
         {
             return Err(Error::InvalidInput);
         }
@@ -515,6 +518,7 @@ fn public_fields(
     ]
     .map(scalar)
     .to_vec();
+    push_bytes(&mut fields, &p.standing_policy_digest);
     push_bytes(&mut fields, &policy.certificate_key);
     push_bytes(&mut fields, &policy.proof_scope.circuit_digest);
     for value in [&c.community, &c.owner, &c.peer] {
@@ -569,6 +573,7 @@ mod tests {
                 change_token_cost: 1,
                 deposit_delay_seconds: 60,
                 minimum_deposit_batch: 2,
+                standing_policy_digest: [7; 32],
             },
             proof_scope: ProofScope {
                 circuit_digest: [2; 32],
@@ -611,19 +616,19 @@ mod tests {
     fn public_fields_follow_the_noir_abi_widths() {
         let s = statement();
         let wave = public_fields(&policy(), &s, None).unwrap();
-        assert_eq!(wave.len(), 586);
+        assert_eq!(wave.len(), 618);
         let outcome = WaveOutcomeStatement {
             evidence: s.clone(),
             outcome: WaveOutcome::Close,
             receipt_digest: [19; 32],
         };
         let fields = public_fields(&policy(), &s, Some(&outcome)).unwrap();
-        assert_eq!(fields.len(), 619);
+        assert_eq!(fields.len(), 651);
         // Outcome code and receipt precede the trailing 64 certificate fields.
-        assert_eq!(fields[522], scalar(2));
-        assert_eq!(fields[523], scalar(19));
-        assert_eq!(&fields[..522], &wave[..522]);
-        assert_eq!(fields[618], scalar(18));
+        assert_eq!(fields[554], scalar(2));
+        assert_eq!(fields[555], scalar(19));
+        assert_eq!(&fields[..554], &wave[..554]);
+        assert_eq!(fields[650], scalar(18));
     }
 
     #[test]

@@ -4,7 +4,7 @@ use crate::Error;
 use czkp::poseidon::{integer, limbs};
 use zeroize::Zeroize;
 
-fn domain(text: &[u8]) -> Field {
+pub(super) fn domain(text: &[u8]) -> Field {
     let mut field = [0; 32];
     field[32 - text.len()..].copy_from_slice(text);
     field

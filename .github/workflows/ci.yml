@@ -87,7 +87,7 @@ jobs:
     - uses: actions/setup-node@v7
       with:
         node-version: 24
-    - run: node tests/wasm.mjs
+    - run: node tests/wasm.mts
     - run: wasm-pack test --node --all-features
     - uses: actions/upload-artifact@v7
       if: always()

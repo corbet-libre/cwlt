@@ -1,26 +1,92 @@
 //! Checked integer planning shared by native and wasm holders. The Noir relation
 //! independently constrains the plan, map updates, signatures and commitments.
+//!
+//! Standing v5: the shared pool replaces the token balance. A reservation needs
+//! `reserved + amount <= cap`; the standing fields follow czkp's owner module.
 #![allow(missing_docs)]
+use czkp::standing::{self, Policy, State};
 use serde::{Deserialize, Serialize};
 const SAFE: u64 = 9_007_199_254_740_991;
+const DAY: u64 = 86_400;
 
 // No Debug implementation: these values are private wallet openings.
 #[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Balances {
-    pub available: u32,
     pub reserved: u64,
-    pub debt: u64,
     pub accepted: u64,
     pub declined: u64,
     pub punished: u64,
+}
+/// The committed standing fields, in the order of the account state.
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Standing {
+    pub g: u64,
+    pub a: u64,
+    pub c: u64,
+    pub pr: u64,
+    pub pg: u64,
+    pub lc: u64,
+    pub day: u64,
+}
+/// The rulebook-signed parameters; the tables are derived by czkp, never supplied.
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StandingParams {
+    pub c0: u64,
+    pub h_a: u64,
+    pub h_g: u64,
+    pub n_half: u64,
+    pub n_c: u64,
+    pub e_q: u64,
+    pub r_max: u64,
+    pub r_age: u64,
+    pub c_max_q: u64,
+    pub c_vet: u64,
+    pub age_vet: u64,
+    pub boost_q: u64,
+    pub boost_days: u64,
+    pub slope_q: u64,
+    pub mid_q: u64,
+    pub kappa_q: u64,
+    pub loan_use_q: u64,
+}
+impl StandingParams {
+    fn policy(&self) -> Result<Policy, Invalid> {
+        Policy::derive(standing::Params {
+            c0: self.c0,
+            h_a: self.h_a,
+            h_g: self.h_g,
+            n_half: self.n_half,
+            n_c: self.n_c,
+            e_q: self.e_q,
+            r_max: self.r_max,
+            r_age: self.r_age,
+            c_max_q: self.c_max_q,
+            c_vet: self.c_vet,
+            age_vet: self.age_vet,
+            boost_q: self.boost_q,
+            boost_days: self.boost_days,
+            slope_q: self.slope_q,
+            mid_q: self.mid_q,
+            kappa_q: self.kappa_q,
+            loan_use_q: self.loan_use_q,
+        })
+        .map_err(|_| Invalid)
+    }
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Request {
     pub old: Balances,
+    pub standing: Standing,
+    pub params: StandingParams,
+    /// Account creation time in seconds (Opening.created_at).
+    pub created_at: u64,
+    /// The proof time in seconds (`now`).
+    pub now: u64,
     pub action: u8,
-    pub capacity: u32,
     pub amount: u32,
     pub role: u8,
     pub phase: u8,
@@ -29,17 +95,72 @@ pub struct Request {
     pub answered: bool,
     pub self_punished: bool,
     pub change_cost: u32,
-    pub refill_units: u32,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Plan {
     pub balances: Balances,
+    pub standing: Standing,
+    /// The pool size the reservation check used (never below one).
+    pub cap: u64,
+    /// The derived policy tables in the circuit's private input shape.
+    pub policy: PolicyOut,
     pub phase: u8,
     pub outcome: u8,
     pub authorization: u8,
     pub answered: bool,
     pub self_punished: bool,
+}
+/// The circuit's `StandingPolicy` input; its digest is bound by the rulebook signature.
+#[derive(Serialize)]
+pub struct PolicyOut {
+    pub c0: u64,
+    pub h_a: u64,
+    pub h_g: u64,
+    pub n_half: u64,
+    pub n_c: u64,
+    pub e_q: u64,
+    pub r_max: u64,
+    pub r_age: u64,
+    pub c_max_q: u64,
+    pub c_vet: u64,
+    pub age_vet: u64,
+    pub boost_q: u64,
+    pub boost_days: u64,
+    pub slope_q: u64,
+    pub mid_q: u64,
+    pub kappa_q: u64,
+    pub loan_use_q: u64,
+    pub factor: u64,
+    pub trust: Vec<u64>,
+    pub g_table: Vec<u64>,
+    pub a_table: Vec<u64>,
+}
+fn policy_out(p: &Policy) -> PolicyOut {
+    let q = &p.params;
+    PolicyOut {
+        c0: q.c0,
+        h_a: q.h_a,
+        h_g: q.h_g,
+        n_half: q.n_half,
+        n_c: q.n_c,
+        e_q: q.e_q,
+        r_max: q.r_max,
+        r_age: q.r_age,
+        c_max_q: q.c_max_q,
+        c_vet: q.c_vet,
+        age_vet: q.age_vet,
+        boost_q: q.boost_q,
+        boost_days: q.boost_days,
+        slope_q: q.slope_q,
+        mid_q: q.mid_q,
+        kappa_q: q.kappa_q,
+        loan_use_q: q.loan_use_q,
+        factor: p.factor,
+        trust: p.trust.to_vec(),
+        g_table: p.g_table.to_vec(),
+        a_table: p.a_table.to_vec(),
+    }
 }
 pub struct Invalid;
 fn sub(value: u64, amount: u64) -> Result<u64, Invalid> {
@@ -51,18 +172,42 @@ fn add(value: u64, amount: u64) -> Result<u64, Invalid> {
         .filter(|n| *n <= SAFE)
         .ok_or(Invalid)
 }
+fn state(s: &Standing) -> State {
+    State {
+        g: s.g,
+        a: s.a,
+        c: s.c,
+        pr: s.pr,
+        pg: s.pg,
+        lc: s.lc,
+        day: s.day,
+        joined: 0,
+    }
+}
 impl Request {
     pub fn prepare(&self) -> Result<Plan, Invalid> {
         let mut b = self.old;
-        if b.available as u128 + b.reserved as u128 > self.capacity as u128
-            || self.role > 1
-            || [b.debt, b.accepted, b.declined, b.punished]
+        let s = &self.standing;
+        let joined = self.created_at / DAY;
+        if self.role > 1
+            || [b.reserved, b.accepted, b.declined, b.punished]
                 .iter()
                 .any(|n| *n > SAFE)
-            || (b.debt > 0 && b.available > 0)
+            || [s.g, s.a, s.c, s.pr, s.pg, s.lc, s.day]
+                .iter()
+                .any(|n| *n > SAFE)
+            || self.created_at == 0
+            || self.now > SAFE
+            || s.day < joined
         {
             return Err(Invalid);
         }
+        let policy = self.params.policy()?;
+        // Calendar decay to the proof day, then the pool for this transition.
+        let mut st = state(s);
+        st.joined = joined;
+        st.advance(self.now / DAY, &policy);
+        let cap = st.cap(&policy);
         let mut phase = self.phase;
         let mut outcome = self.outcome;
         let mut authorization = 0;
@@ -70,10 +215,13 @@ impl Request {
         let mut self_punished = self.self_punished;
         match self.action {
             1 => {
-                if b.debt > 0 || self.amount == 0 || phase != 1 || outcome != 0 {
+                if self.amount == 0 || phase != 1 || outcome != 0 {
                     return Err(Invalid);
                 }
-                b.available = b.available.checked_sub(self.amount).ok_or(Invalid)?;
+                // Pool check, both roles: pending first contacts stay within the cap.
+                if b.reserved.saturating_add(self.amount as u64) > cap {
+                    return Err(Invalid);
+                }
                 b.reserved = add(b.reserved, self.amount as u64)?;
             }
             2 => {
@@ -83,8 +231,12 @@ impl Request {
                 phase = 2;
             }
             3..=5 => {
-                let expected = if self.action == 4 { 1 } else { 2 };
-                if phase != expected {
+                let phase_ok = match self.action {
+                    4 => phase == 1,
+                    5 => phase == 2 || phase == 8,
+                    _ => phase == 2,
+                };
+                if !phase_ok {
                     return Err(Invalid);
                 }
                 if self.action == 3 {
@@ -97,6 +249,12 @@ impl Request {
                     outcome = self.kind;
                     if self.kind == 1 {
                         answered = true;
+                        // An Answer is a clean conversation in either role.
+                        if self.role == 0 {
+                            st.answer_received(&policy);
+                        } else {
+                            st.answer_given(&policy);
+                        }
                     }
                     if self.role == 0 {
                         b.accepted = add(b.accepted, 1)?;
@@ -104,16 +262,12 @@ impl Request {
                         authorization = self.kind;
                     }
                 }
+                if self.action == 5 {
+                    // The waiting period ended without an Answer: the loan pays the miss.
+                    st.unanswered(&policy);
+                }
                 phase = self.action;
-                b.available = b.available.checked_add(self.amount).ok_or(Invalid)?;
                 b.reserved = sub(b.reserved, self.amount as u64)?;
-            }
-            6 => {
-                let paid = b.debt.min(self.refill_units as u64);
-                b.debt -= paid;
-                let headroom = self.capacity as u64 - b.available as u64 - b.reserved;
-                let issued = headroom.min(self.refill_units as u64 - paid);
-                b.available = b.available.checked_add(issued as u32).ok_or(Invalid)?;
             }
             7 | 8 | 10 => {
                 let own = self.action != 10;
@@ -138,6 +292,8 @@ impl Request {
                     }
                     authorization = kind;
                     self_punished = true;
+                    // Punishing costs the punisher the same as the target.
+                    st.punish_given();
                 } else {
                     if (kind != 4 && self.role != 0)
                         || (kind >= 3 && outcome == 3)
@@ -159,22 +315,19 @@ impl Request {
                             b.declined = sub(b.declined, 1)?;
                         }
                         b.punished = add(b.punished, 1)?;
+                        // The obligation is consumed: the punishment counts fully.
+                        st.punished(kind == 4 || self.answered);
                     }
                 }
                 if kind >= 3 {
-                    if [1, 2].contains(&phase) {
+                    // My own wave punished by its target holds its slot until the
+                    // waiting period ends (phase 8); every other punishment frees it.
+                    let live = [1, 2].contains(&phase);
+                    let hold = !own && kind == 3 && self.role == 0 && live;
+                    if live && !hold {
                         b.reserved = sub(b.reserved, self.amount as u64)?;
-                        if kind == 4 {
-                            b.available = b.available.checked_add(self.amount).ok_or(Invalid)?;
-                        }
                     }
-                    if kind == 4 || ![1, 2].contains(&phase) {
-                        let cost = if kind == 4 { 1 } else { self.amount as u64 };
-                        let paid = cost.min(b.available as u64);
-                        b.available -= paid as u32;
-                        b.debt = add(b.debt, cost - paid)?;
-                    }
-                    phase = 7;
+                    phase = if hold { 8 } else { 7 };
                     if kind == 4 {
                         answered = true;
                     }
@@ -184,13 +337,13 @@ impl Request {
                 } else if outcome != 3 {
                     if kind == 1 && outcome == 0 {
                         if [1, 2].contains(&phase) {
-                            b.available = b.available.checked_add(self.amount).ok_or(Invalid)?;
                             b.reserved = sub(b.reserved, self.amount as u64)?;
                         } else if ![4, 5].contains(&phase) {
                             return Err(Invalid);
                         }
                         phase = 3;
                         answered = true;
+                        st.answer_received(&policy);
                     }
                     if kind == 2 && phase == 1 {
                         phase = 2;
@@ -199,23 +352,36 @@ impl Request {
                 }
             }
             9 => {
-                if b.debt > 0 || self.change_cost == 0 {
+                // A binding change needs pool headroom and holds nothing.
+                if self.change_cost == 0 || b.reserved.saturating_add(self.change_cost as u64) > cap
+                {
                     return Err(Invalid);
                 }
-                b.available = b.available.checked_sub(self.change_cost).ok_or(Invalid)?;
             }
             11 => {}
+            // 6 (refill) is retired: slots return on settlement.
             _ => return Err(Invalid),
         }
-        let paid = b.debt.min(b.available as u64);
-        b.available -= paid as u32;
-        b.debt -= paid;
-        // Every accepted action either transfers the same amount between available
-        // and reserved, reduces their sum, or refills only the checked headroom.
-        // Debt repayment above can only reduce that sum. The entry capacity bound
-        // therefore also holds here; the independent Noir relation checks it too.
+        let standing = Standing {
+            g: st.g,
+            a: st.a,
+            c: st.c,
+            pr: st.pr,
+            pg: st.pg,
+            lc: st.lc,
+            day: st.day,
+        };
+        if [st.g, st.a, st.c, st.pr, st.pg, st.lc]
+            .iter()
+            .any(|n| *n > SAFE)
+        {
+            return Err(Invalid);
+        }
         Ok(Plan {
             balances: b,
+            standing,
+            cap,
+            policy: policy_out(&policy),
             phase,
             outcome,
             authorization,

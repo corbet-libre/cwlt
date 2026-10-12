@@ -1,16 +1,46 @@
 use super::*;
+fn params() -> StandingParams {
+    StandingParams {
+        c0: 3,
+        h_a: 14,
+        h_g: 14,
+        n_half: 25,
+        n_c: 60,
+        e_q: 16_384,
+        r_max: 40,
+        r_age: 2,
+        c_max_q: 52_428,
+        c_vet: 30,
+        age_vet: 60,
+        boost_q: 65_536,
+        boost_days: 30,
+        slope_q: 262_144,
+        mid_q: 49_152,
+        kappa_q: 131_072,
+        loan_use_q: 16_384,
+    }
+}
 fn request(action: u8) -> Request {
     Request {
         old: Balances {
-            available: 0,
             reserved: 0,
-            debt: 0,
             accepted: 1,
             declined: 0,
             punished: 0,
         },
+        standing: Standing {
+            g: 0,
+            a: 2 << 16,
+            c: 0,
+            pr: 0,
+            pg: 0,
+            lc: 0,
+            day: 0,
+        },
+        params: params(),
+        created_at: 100,
+        now: 200,
         action,
-        capacity: 3,
         amount: 1,
         role: 0,
         phase: 3,
@@ -19,79 +49,79 @@ fn request(action: u8) -> Request {
         answered: true,
         self_punished: false,
         change_cost: 1,
-        refill_units: 1,
     }
 }
 #[test]
-fn punishment_at_zero_becomes_debt_and_first_refill_pays_it() {
-    let burn = request(8).prepare().ok().unwrap();
-    assert_eq!(burn.balances.debt, 1);
-    let mut refill = request(6);
-    refill.old = burn.balances;
-    let paid = refill.prepare().ok().unwrap();
-    assert_eq!(paid.balances.debt, 0);
-    assert_eq!(paid.balances.available, 0);
-    refill.old = paid.balances;
-    assert_eq!(refill.prepare().ok().unwrap().balances.available, 1);
+fn punishing_costs_the_punisher_one_given_punishment() {
+    let p = request(8).prepare().ok().unwrap();
+    assert_eq!(p.standing.pg, 1 << 16);
+    assert_eq!(p.standing.lc, 1);
+    assert_eq!(p.standing.pr, 0);
 }
 #[test]
-fn target_cannot_recover_a_punished_reservation() {
+fn a_punished_wave_holds_its_slot_until_the_waiting_period_ends() {
     let mut r = request(10);
     r.old.reserved = 1;
     r.phase = 2;
     r.outcome = 0;
     r.kind = 3;
     let punished = r.prepare().ok().unwrap();
-    assert_eq!(punished.balances.reserved, 0);
+    // Held: the slot stays occupied (phase 8) and the punishment counts at once.
+    assert_eq!(punished.balances.reserved, 1);
     assert_eq!(punished.balances.punished, 1);
+    assert_eq!(punished.phase, 8);
+    assert_eq!(punished.standing.pr, 1 << 16);
+    // Expiry settles it as a miss: the slot returns and the loan pays.
     r.old = punished.balances;
+    r.standing = punished.standing;
     r.phase = punished.phase;
     r.outcome = punished.outcome;
     r.action = 5;
-    assert!(r.prepare().is_err());
+    r.now = 200 + 86_400;
+    let settled = r.prepare().ok().unwrap();
+    assert_eq!(settled.balances.reserved, 0);
+    assert!(settled.standing.a < r.standing.a);
 }
 #[test]
 fn established_punishment_reclassifies_a_sent_outcome() {
     let mut r = request(10);
-    r.old.available = 1;
     let p = r.prepare().ok().unwrap();
     assert_eq!(p.balances.accepted, 0);
     assert_eq!(p.balances.punished, 1);
-    assert_eq!(p.balances.available, 0);
+    assert_eq!(p.standing.pr, 1 << 16);
     r.old = p.balances;
     r.phase = p.phase;
     r.outcome = p.outcome;
     assert!(r.prepare().is_err());
 }
 #[test]
-fn established_delivery_order_cannot_change_the_burn_or_record() {
+fn an_answer_is_a_clean_conversation_and_earns_goodwill() {
     let mut r = request(10);
-    r.old.available = 1;
-    r.old.reserved = 2;
+    r.phase = 2;
+    r.outcome = 0;
+    r.answered = false;
+    r.kind = 1;
+    r.old.reserved = 1;
     r.old.accepted = 0;
-    r.amount = 2;
+    r.standing.pr = 2 << 16;
+    let a = r.prepare().ok().unwrap();
+    assert_eq!(a.balances.reserved, 0);
+    assert!(a.standing.g >= 1 << 16);
+    assert!(a.standing.pr < 2 << 16);
+    assert_eq!(a.standing.c, 1 << 16);
+}
+#[test]
+fn a_reservation_needs_pool_headroom() {
+    let mut r = request(1);
     r.phase = 1;
     r.outcome = 0;
     r.answered = false;
-    let punished = r.prepare().ok().unwrap();
-    assert_eq!(punished.balances.available, 2);
-    assert_eq!(punished.balances.reserved, 0);
-    assert_eq!(punished.balances.punished, 1);
-    let mut late = request(10);
-    late.old = punished.balances;
-    late.phase = punished.phase;
-    late.outcome = punished.outcome;
-    late.answered = punished.answered;
-    late.kind = 1;
-    let terminal = late.prepare().ok().unwrap();
-    assert!(terminal.balances == punished.balances);
-    assert_eq!(terminal.phase, 7);
-    r.kind = 1;
-    let answer = r.prepare().ok().unwrap();
-    r.old = answer.balances;
-    r.phase = answer.phase;
-    r.outcome = answer.outcome;
-    r.answered = answer.answered;
-    r.kind = 4;
-    assert!(r.prepare().ok().unwrap().balances == terminal.balances);
+    r.old.reserved = 0;
+    // The newcomer cap is three: three reservations fit, the fourth does not.
+    for held in 0..3 {
+        r.old.reserved = held;
+        assert!(r.prepare().is_ok());
+    }
+    r.old.reserved = 3;
+    assert!(r.prepare().is_err());
 }
