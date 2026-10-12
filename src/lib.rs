@@ -38,3 +38,8 @@ pub fn prepare(input: &str) -> Result<String, String> {
 /// Extension-state counterpart reservation verification.
 #[cfg(feature = "wave")]
 pub mod wave;
+
+/// Wave wallet jobs: the member's action is recorded first, proofs follow in the
+/// background and never block it.
+#[cfg(feature = "wave")]
+pub mod wave_wallet;
