@@ -1248,6 +1248,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cvfy"
+version = "0.0.0"
+source = "git+https://git.corbet.ch/corbet-foss/cvfy.git?branch=main#a17352654185c30a498fa80ffcb35c8953b674ac"
+dependencies = [
+ "czkp",
+ "data-encoding",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
 name = "cwlt"
 version = "0.0.0"
 dependencies = [
@@ -1255,6 +1267,7 @@ dependencies = [
  "ckmg",
  "cpsd",
  "csgn",
+ "cvfy",
  "cwst",
  "czkp",
  "ed25519-dalek",
@@ -1361,6 +1374,7 @@ dependencies = [
  "rs_merkle",
  "schemars 1.2.2",
  "serde",
+ "serde_json",
  "sha2 0.11.0",
  "utoipa",
 ]
