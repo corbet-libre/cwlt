@@ -15,10 +15,10 @@ if shared.name != "ccid-cached":
 source = shared / "08a9478e457e604aa31f9a54/release-artifacts/5a8dd590235b83b2e4cf576fd4104bfd3e9b37e4/artifact-conformance"
 source = source.resolve(strict=True)
 pins = {
-    "worker-receipt.json": (65536, "0b2c57f19c1440aaa55b62b3f27a57c96b8baec38a266ab291e719cc9a3b638d"),
-    "manifest.json": (65536, "81aec00155f28e7b1d064adeb893593e4bedae01bd8334f80bf0c65ce91c8efc"),
-    "circuits.json": (64 * 1024 * 1024, "b1bb892081b56e441211370c24e8f4371d053115e79e9a0011082131c79d375c"),
-    "keys.json": (1024 * 1024, "3b0c627844f05d0c9f295a987a4125d21dfb693498614d11f09a1119c5c09993"),
+    "worker-receipt.json": (65536, "311feaf38d8e52a422ce693b333333e1910a7d24a3343ad1a773ee693b917f5c"),
+    "manifest.json": (65536, "09dc0207ba5d681d604606de742b631be0462258ed5f42fc60414c8981109300"),
+    "circuits.json": (64 * 1024 * 1024, "6b6df70251e5de47b1014f381172ecd398219d6edfdd936f72484529a837403d"),
+    "keys.json": (1024 * 1024, "bf8b938fe8678d3b248e9459b97ff64027792d43a5eeee1fea2c13d40da3fb48"),
     "setup/g1.dat": (128 * 1024 * 1024, "23d5e6ef4d511367e83c0d909911b7cdd33f0b324d4106d57eefdf50fac6a59d"),
     "setup/g2.dat": (128, "01797bfc4de5a96f0e516a9ea4537d18786dc30cb991aca4274c95822b69c32f"),
 }
