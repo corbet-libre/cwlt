@@ -11,12 +11,15 @@ export const SUCCESS=1,PUNISHED=2,REWARD=3;
 /** What the sponsor remembers about one bond, as returned by the planner. */
 export interface BondEntry {limit:bigint;done:boolean;overshoot:boolean;punished_seen:bigint;rewards_seen:bigint}
 
-const entryPayload=(h:any,e:BondEntry)=>h.hash(64,[e.limit,e.done?1n:0n,e.overshoot?1n:0n,e.punished_seen,e.rewards_seen]);
+export const entryPayload=(h:any,e:BondEntry)=>h.hash(64,[e.limit,e.done?1n:0n,e.overshoot?1n:0n,e.punished_seen,e.rewards_seen]);
 const fromPlan=(e:any):BondEntry=>({limit:BigInt(e.limit),done:e.done,overshoot:e.overshoot,punished_seen:BigInt(e.punishedSeen),rewards_seen:BigInt(e.rewardsSeen)});
 
 export class VoucherWitness extends ExtensionWitness {
   /** Set by the counted settle wrappers for exactly one transition. */
   pendingCount:{peer:Uint8Array}|undefined;
+  /** The sponsor's private view of every bond it holds, keyed by the decimal bond-map key. */
+  bondBook:Map<string,{secret:Uint8Array;entry:BondEntry}>=new Map();
+  clone() {const copy=super.clone();copy.bondBook=new Map(this.bondBook);return copy;}
   /** Bond map and answer counting must change before the commitment is computed. */
   async beforeFinish(next:any,input:any) {
     if(this.pendingCount) {
@@ -44,6 +47,7 @@ export class VoucherWitness extends ExtensionWitness {
     const key=await this.hashes.hash(62,limbs32(bondSecret));
     const inserted=await this.bonds.insert(key,await entryPayload(this.hashes,entry));
     input.aux.bond_map=inserted.witness;next.bonds=inserted.next;
+    next.bondBook.set(key.toString(),{secret:Uint8Array.from(bondSecret),entry});
     const result=await this.finish(next,input);
     return {...result,entry};
   }
@@ -57,6 +61,7 @@ export class VoucherWitness extends ExtensionWitness {
     const key=await this.hashes.hash(62,limbs32(bondSecret));
     const changed=await this.bonds.update(key,await entryPayload(this.hashes,after));
     input.aux.bond_map=changed.witness;next.bonds=changed.next;
+    next.bondBook.set(key.toString(),{secret:Uint8Array.from(bondSecret),entry:after});
     const result=await this.finish(next,input);
     return {...result,entry:after,tag:fieldBytes(tag)};
   }
