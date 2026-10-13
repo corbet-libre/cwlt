@@ -1,5 +1,7 @@
 //! Private original account preparation. Public input objects are data only.
 //! No accepted account is installed or serialized by this behavioral stage.
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+mod activation;
 mod hashes;
 mod maps;
 mod opening;
@@ -8,6 +10,8 @@ mod prepared;
 
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use czkp::ProofScope as GenesisProofScope;
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+pub use activation::{ActivationProof, ActivationRequest, prove_activation};
 pub use policy::{AccountPolicy, ExtensionPolicy};
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use prepared::{

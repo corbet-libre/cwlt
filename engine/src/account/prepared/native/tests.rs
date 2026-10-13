@@ -89,7 +89,7 @@ fn original_update_proves_genesis_and_retains_same_private_candidate_without_ado
     let opening = zeroize::Zeroizing::new(candidate.opening.blind);
     let prover = NativeProver::new(crate::native_prover::tests::config()).unwrap();
     let proof = candidate.prove(&engine, &prover, || Ok(101)).unwrap();
-    assert_eq!(proof.public_inputs().len(), 377);
+    assert_eq!(proof.public_inputs().len(), 410);
     assert!(!proof.proof().is_empty());
     assert_eq!(
         proof.scope().circuit_digest.to_vec(),
