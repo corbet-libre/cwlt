@@ -22,6 +22,7 @@ fn publication(same_recipient: bool, damage: Damage) -> (Epoch, Vec<u8>) {
             version: 4,
             state: [1; 32],
             required_inbox: [5; 32],
+            role: 0,
             blinding: [9; 32],
         },
         Leaf {
@@ -29,6 +30,7 @@ fn publication(same_recipient: bool, damage: Damage) -> (Epoch, Vec<u8>) {
             version: 5,
             state: [2; 32],
             required_inbox: [6; 32],
+            role: 0,
             blinding: [10; 32],
         },
     ];
@@ -68,6 +70,7 @@ fn publication(same_recipient: bool, damage: Damage) -> (Epoch, Vec<u8>) {
         plaintext.extend_from_slice(&leaf.state);
         plaintext.extend_from_slice(&leaf.required_inbox);
         plaintext.extend_from_slice(&leaf.blinding);
+        plaintext.push(leaf.role);
         plaintext.extend_from_slice(&(index as u32).to_be_bytes());
         for hash in tree.proof(&[index]).proof_hashes() {
             plaintext.extend_from_slice(hash);
@@ -83,7 +86,7 @@ fn publication(same_recipient: bool, damage: Damage) -> (Epoch, Vec<u8>) {
             match damage {
                 Damage::Certificate => *plaintext.last_mut().unwrap() ^= 1,
                 Damage::Path => plaintext[LEAF] ^= 1,
-                Damage::Index => plaintext[136..140].copy_from_slice(&2u32.to_be_bytes()),
+                Damage::Index => plaintext[137..141].copy_from_slice(&2u32.to_be_bytes()),
                 _ => (),
             }
         }

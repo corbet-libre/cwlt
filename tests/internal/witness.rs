@@ -18,6 +18,7 @@ fn params() -> StandingParams {
         mid_q: 49_152,
         kappa_q: 131_072,
         loan_use_q: 16_384,
+        voucher: VoucherParamsIn::default(),
     }
 }
 fn request(action: u8) -> Request {
@@ -49,6 +50,12 @@ fn request(action: u8) -> Request {
         answered: true,
         self_punished: false,
         change_cost: 1,
+        voucher: VoucherAccount::default(),
+        voucher_role: 0,
+        count: false,
+        obligation_kind: 0,
+        obligation_n: 0,
+        entry: BondEntryIo::default(),
     }
 }
 #[test]

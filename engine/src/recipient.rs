@@ -15,7 +15,7 @@ const PREFIX: &[u8] = b"cblc.record-witnesses.v2\0";
 const INFO: &[u8] = b"cblc.record-witness.v2\0";
 const ENCAP: usize = 32;
 const TAG: usize = 16;
-const LEAF: usize = 140;
+const LEAF: usize = 141;
 const CERTIFICATE: usize = 64;
 
 /// Borrowed, nonexporting recipient initialized inside freshly authorized Keys.
@@ -237,12 +237,13 @@ fn decode(
         state: bytes[40..72].try_into().map_err(|_| Error::Invalid)?,
         required_inbox: bytes[72..104].try_into().map_err(|_| Error::Invalid)?,
         blinding: bytes[104..136].try_into().map_err(|_| Error::Invalid)?,
+        role: bytes[136],
     };
     let received = ReceivedRecord {
         epoch: epoch.clone(),
         period_seconds,
         leaf,
-        index: u32::from_be_bytes(bytes[136..140].try_into().map_err(|_| Error::Invalid)?),
+        index: u32::from_be_bytes(bytes[137..141].try_into().map_err(|_| Error::Invalid)?),
         path: bytes[LEAF..expected - CERTIFICATE]
             .as_chunks::<32>()
             .0

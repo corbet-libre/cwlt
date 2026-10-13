@@ -1,5 +1,7 @@
 //! Real planner state partitions, also executed as wasm.
-use cwlt::witness::{Balances, Request, Standing, StandingParams};
+use cwlt::witness::{
+    Balances, BondEntryIo, Request, Standing, StandingParams, VoucherAccount, VoucherParamsIn,
+};
 
 fn params() -> StandingParams {
     StandingParams {
@@ -20,6 +22,7 @@ fn params() -> StandingParams {
         mid_q: 49_152,
         kappa_q: 131_072,
         loan_use_q: 16_384,
+        voucher: VoucherParamsIn::default(),
     }
 }
 
@@ -52,6 +55,12 @@ fn request(action: u8) -> Request {
         answered: false,
         self_punished: false,
         change_cost: 1,
+        voucher: VoucherAccount::default(),
+        voucher_role: 0,
+        count: false,
+        obligation_kind: 0,
+        obligation_n: 0,
+        entry: BondEntryIo::default(),
     }
 }
 
@@ -132,7 +141,7 @@ fn every_transition_keeps_the_pool_and_counter_bounds() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 #[cfg_attr(not(target_arch = "wasm32"), test)]
 fn malformed_state_and_wire_input_fail_closed() {
-    for action in [0, 6, 12, 255] {
+    for action in [0, 6, 15, 255] {
         assert!(request(action).prepare().is_err());
     }
     let mut r = request(11);
@@ -157,4 +166,67 @@ fn malformed_state_and_wire_input_fail_closed() {
     assert_eq!(result["policy"]["trust"].as_array().unwrap().len(), 65);
     assert_eq!(result["policy"]["g_table"].as_array().unwrap().len(), 64);
     assert!(cwlt::prepare(&text.replace("\"action\":11", "\"action\":0")).is_err());
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
+fn voucher_actions_follow_the_accounting_rules() {
+    // Admission: a proven member spends one voucher; an unproven one overshoots and loses it.
+    let mut r = request(12);
+    r.voucher.proven = 1;
+    let plan = r.prepare().ok().unwrap();
+    assert_eq!((plan.voucher.away, plan.voucher.lost), (1, 0));
+    assert!(plan.entry.limit >= 1 && !plan.entry.overshoot);
+    let plan = request(12).prepare().ok().unwrap();
+    assert_eq!((plan.voucher.away, plan.voucher.lost), (0, 1));
+    assert!(plan.entry.overshoot);
+    // Success returns the voucher once.
+    let mut r = request(13);
+    r.voucher = VoucherAccount {
+        proven: 1,
+        away: 1,
+        ..VoucherAccount::default()
+    };
+    r.entry = BondEntryIo {
+        limit: 2,
+        ..BondEntryIo::default()
+    };
+    r.obligation_kind = 1;
+    let plan = r.prepare().ok().unwrap();
+    assert_eq!(
+        (plan.voucher.away, plan.voucher.returned, plan.entry.done),
+        (0, 1, true)
+    );
+    r.entry.done = true;
+    assert!(r.prepare().is_err());
+    // A vouchee punishment weighs one over the limit at issuance, in order.
+    let mut r = request(13);
+    r.entry = BondEntryIo {
+        limit: 4,
+        ..BondEntryIo::default()
+    };
+    r.obligation_kind = 2;
+    r.obligation_n = 2;
+    assert!(r.prepare().is_err());
+    r.obligation_n = 1;
+    let plan = r.prepare().ok().unwrap();
+    assert_eq!(plan.standing.pr, 65_536 / 4);
+    // Reward is capped at two.
+    let mut r = request(13);
+    r.obligation_kind = 3;
+    r.obligation_n = 1;
+    r.voucher.bonus = 2;
+    assert_eq!(r.prepare().ok().unwrap().voucher.bonus, 2);
+    // Success proof: every threshold must hold.
+    let mut r = request(14);
+    r.created_at = 86_400;
+    r.now = 40 * 86_400;
+    r.standing.day = 40;
+    r.voucher.answers = 3;
+    assert_eq!(r.prepare().ok().unwrap().voucher.proven, 40);
+    r.voucher.answers = 2;
+    assert!(r.prepare().is_err());
+    r.voucher.answers = 3;
+    r.now = 20 * 86_400;
+    assert!(r.prepare().is_err());
 }
