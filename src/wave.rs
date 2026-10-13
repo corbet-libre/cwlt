@@ -50,6 +50,34 @@ pub struct WavePolicy {
     pub valid_until: u64,
 }
 impl WavePolicy {
+    /// Project the canonical portable descriptor (`waveVerifier`) from the
+    /// authenticated Beacon Balance publication. The descriptor must be bound to
+    /// the publication's own community and be current; material without it
+    /// (older publications) cannot authorize Waves.
+    #[cfg(feature = "beacon")]
+    pub fn from_balance(balance: &cbcn::balance::Balance, now: u64) -> Result<Self, Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Material {
+            community: String,
+            wave_verifier: WavePolicy,
+        }
+        if now >= balance.valid_until() {
+            return Err(Error::Expired);
+        }
+        let material: Material =
+            serde_json::from_slice(balance.payload()).map_err(|_| Error::InvalidInput)?;
+        material.wave_verifier.validate()?;
+        if material.wave_verifier.community
+            != czkp::decode::<32>(&czkp::digest(material.community.as_bytes()))?
+        {
+            return Err(Error::PolicyMismatch);
+        }
+        if now < material.wave_verifier.valid_from || now >= material.wave_verifier.valid_until {
+            return Err(Error::Expired);
+        }
+        Ok(material.wave_verifier)
+    }
     pub fn validate(&self) -> Result<(), Error> {
         self.extension.validate()?;
         if self.certificate_key.len() != 64
@@ -586,6 +614,108 @@ mod tests {
             valid_until: 10_000,
         }
     }
+    #[cfg(feature = "beacon")]
+    mod beacon {
+        use super::*;
+        use csgn::{Kind, SecretKey, Signer};
+        use serde_json::{Value, json};
+
+        const NOW: u64 = 1000;
+        const COMMUNITY: &str = "alpha";
+
+        fn descriptor() -> Value {
+            let mut value = serde_json::to_value(policy()).unwrap();
+            value["community"] = serde_json::to_value(
+                czkp::decode::<32>(&czkp::digest(COMMUNITY.as_bytes())).unwrap(),
+            )
+            .unwrap();
+            value["validFrom"] = json!(NOW - 10);
+            value["validUntil"] = json!(NOW + 400);
+            value
+        }
+        fn balance(wave: Option<Value>) -> cbcn::balance::Balance {
+            let mut signer = Signer::new(
+                COMMUNITY,
+                SecretKey::from_seed(&mut [72; 32]),
+                NOW - 1,
+                1000,
+            )
+            .unwrap();
+            let mut material = json!({"purpose":"cblc.public-verifier.v2",
+                "community":COMMUNITY,"revision":1,"policyEpoch":1});
+            if let Some(wave) = wave {
+                material["waveVerifier"] = wave;
+            }
+            let bytes = signer
+                .sign(
+                    Kind::SettingsSnapshot,
+                    &serde_json::to_vec(&material).unwrap(),
+                    NOW,
+                    NOW + 500,
+                )
+                .unwrap();
+            cbcn::balance::Balance::verify(signer.key_ring(), &bytes, 1, 1, NOW).unwrap()
+        }
+
+        #[test]
+        fn the_descriptor_of_a_current_publication_is_projected_exactly() {
+            let projected = WavePolicy::from_balance(&balance(Some(descriptor())), NOW).unwrap();
+            assert_eq!(projected.proof_scope, policy().proof_scope);
+            assert_eq!(projected.extension, policy().extension);
+            assert_eq!(projected.valid_until, NOW + 400);
+        }
+        #[test]
+        fn material_without_a_descriptor_or_with_unknown_fields_authorizes_nothing() {
+            assert_eq!(
+                WavePolicy::from_balance(&balance(None), NOW).err(),
+                Some(Error::InvalidInput)
+            );
+            let mut extra = descriptor();
+            extra["unexpected"] = json!(1);
+            assert_eq!(
+                WavePolicy::from_balance(&balance(Some(extra)), NOW).err(),
+                Some(Error::InvalidInput)
+            );
+        }
+        #[test]
+        fn a_descriptor_for_another_community_is_refused() {
+            let mut other = descriptor();
+            other["community"] = serde_json::to_value([9u8; 32]).unwrap();
+            assert_eq!(
+                WavePolicy::from_balance(&balance(Some(other)), NOW).err(),
+                Some(Error::PolicyMismatch)
+            );
+        }
+        #[test]
+        fn publication_and_descriptor_windows_are_enforced() {
+            let published = balance(Some(descriptor()));
+            // Descriptor not yet valid, descriptor ended, publication ended.
+            let mut early = descriptor();
+            early["validFrom"] = json!(NOW + 1);
+            assert_eq!(
+                WavePolicy::from_balance(&balance(Some(early)), NOW).err(),
+                Some(Error::Expired)
+            );
+            assert_eq!(
+                WavePolicy::from_balance(&published, NOW + 400).err(),
+                Some(Error::Expired)
+            );
+            assert_eq!(
+                WavePolicy::from_balance(&published, NOW + 500).err(),
+                Some(Error::Expired)
+            );
+        }
+        #[test]
+        fn an_invalid_descriptor_is_refused_before_use() {
+            let mut bad = descriptor();
+            bad["certificateKey"] = serde_json::to_value(vec![4u8; 63]).unwrap();
+            assert_eq!(
+                WavePolicy::from_balance(&balance(Some(bad)), NOW).err(),
+                Some(Error::InvalidInput)
+            );
+        }
+    }
+
     fn statement() -> WaveStatement {
         WaveStatement {
             context: WaveContext {
