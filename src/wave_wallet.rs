@@ -1,6 +1,6 @@
 //! Wave wallet job journal.
 //!
-//! A member's wave action (reserve, Answer, Close, Silence, Punish, self-block) is
+//! A member's wave action (reserve, Answer, Close, Silence, Punish) is
 //! recorded as a job at once and shows as done in the journal and UI. Building the
 //! witness, proving and submitting follow in a background worker. A failed or
 //! uncertain proof never removes the job: it returns to `Recorded` for another
@@ -44,8 +44,6 @@ pub enum Operation {
     Silence,
     /// Punish the peer.
     Punish,
-    /// Block the peer in the pair map.
-    SelfBlock,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -264,7 +262,7 @@ mod tests {
         let mut jobs = Jobs::default();
         for n in 0..MAX_JOBS {
             let id = [(n % 256) as u8; 32];
-            jobs.record(id, Operation::SelfBlock, 1).unwrap();
+            jobs.record(id, Operation::Punish, 1).unwrap();
         }
         assert_eq!(
             jobs.record([0; 32], Operation::Silence, 1),

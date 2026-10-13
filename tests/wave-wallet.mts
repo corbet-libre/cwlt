@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {reserveSender, reserveRecipient, answer, close, silence, punish, selfBlock, type Witness} from '../runtime/wave-wallet.mts';
+import {reserveSender, reserveRecipient, answer, close, silence, punish, type Witness} from '../runtime/wave-wallet.mts';
 
 const calls: any[] = [];
 const candidate = (name: string) => ({input: {name}, statement: {name}, next: {}});
@@ -28,5 +28,4 @@ assert.equal(calls.at(-1)[3], undefined);
 assert.deepEqual((await silence(witness, 5n, 300n)).operation, {kind: 'silence'});
 await assert.rejects(punish(witness, 5n, 100n, undefined), /signature/);
 assert.deepEqual((await punish(witness, 5n, 100n, new Uint8Array(64))).operation, {kind: 'punish'});
-assert.throws(selfBlock, /Contacts event/);
 console.log('Wave wallet operation vectors passed');

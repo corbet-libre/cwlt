@@ -57,10 +57,3 @@ export async function punish(w: Witness, event: bigint, now: bigint | number, co
   if (!contactSignature) throw new Error('The peer\'s contact signature is required');
   return {operation: {kind: 'punish'}, candidate: await w.punish(event, now, contactSignature)};
 }
-/**
- * The update circuit has no standalone block action: the pair map is blocked by
- * `punish`. A plain block is a Contacts event and needs no proof.
- */
-export function selfBlock(): never {
-  throw new Error('Plain blocking is a Contacts event; the pair map blocks through punish');
-}
