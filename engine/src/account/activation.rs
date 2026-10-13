@@ -19,6 +19,9 @@ pub struct ActivationRequest {
     pub standing: czkp::standing::Params,
     /// The hub's observation time from its terms; the proof is dated by it.
     pub checked_at: u64,
+    /// The one-time owner the proof binds (`czkp::activation_owner` of the address and
+    /// this creation's token message), so the proof cannot serve another creation.
+    pub owner: [u8; 32],
 }
 
 /// The public statement and locally verified proof to upload.
@@ -33,8 +36,7 @@ pub struct ActivationProof {
 fn context(request: ActivationRequest, engine: &Engine) -> Result<GenesisContext, Error> {
     let mut operation = [0u8; 32];
     getrandom::fill(&mut operation).map_err(|_| Error::Crypto)?;
-    let mut member = [0u8; 32];
-    getrandom::fill(&mut member).map_err(|_| Error::Crypto)?;
+    let member = request.owner;
     let key = engine.prepare_account_key(&request.community_id, operation)?;
     let projection = key.projection(engine)?;
     let community = hashes::digest(request.community_id.as_bytes())?;
@@ -137,6 +139,7 @@ mod tests {
             },
             standing: czkp::reference::params(),
             checked_at: 101,
+            owner: czkp::activation_owner(community, &[7; 32]),
         }
     }
 
@@ -152,7 +155,11 @@ mod tests {
             hashes::digest(b"firstcommunity").unwrap()
         );
         assert_ne!(first.public.community, second.public.community);
-        // A throwaway owner each time: nothing links two activations.
+        // The proof binds exactly the one-time owner it was asked for.
+        assert_eq!(
+            first.public.owner,
+            czkp::activation_owner("firstcommunity", &[7; 32])
+        );
         assert_ne!(first.public.owner, second.public.owner);
         assert_ne!(first.public.next_state, second.public.next_state);
     }

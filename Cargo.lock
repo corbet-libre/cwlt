@@ -931,7 +931,7 @@ dependencies = [
  "chacha20",
  "chacha20poly1305",
  "cpsd",
- "cwlt-engine 0.0.0 (git+https://git.corbet.ch/corbet-foss/cwlt?branch=main)",
+ "cwlt-engine",
  "data-encoding",
  "ed25519-dalek",
  "getrandom 0.4.3",
@@ -1315,32 +1315,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cwlt-engine"
-version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#bc72edfaf8d817da907bd9bb3cc907b5492b0b26"
-dependencies = [
- "acvm",
- "barretenberg-rs",
- "bn254_blackbox_solver",
- "chacha20poly1305",
- "czkp",
- "data-encoding",
- "ed25519-dalek",
- "flate2",
- "getrandom 0.4.3",
- "hpke",
- "nargo",
- "noirc_abi",
- "noirc_artifacts",
- "p256 0.14.0",
- "rlimit",
- "rs_merkle",
- "serde",
- "serde_json",
- "zeroize",
-]
-
-[[package]]
 name = "cwst"
 version = "0.0.0"
 source = "git+https://git.corbet.ch/corbet-foss/cwst.git?branch=v01#c39c5b096ff06c7060004063146862f07c6ff75b"
@@ -1366,7 +1340,6 @@ dependencies = [
 [[package]]
 name = "czkp"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/czkp?branch=main#23d8b4a17a20d69f9d538eb5841e109bc1498af3"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.6.0",
