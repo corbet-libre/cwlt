@@ -14,6 +14,7 @@ impl Writer {
     pub(crate) fn u64(&mut self, value: u64) {
         self.bytes(&value.to_be_bytes());
     }
+    #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
     pub(crate) fn var(&mut self, value: &[u8]) -> Result<(), Error> {
         self.u32(u32::try_from(value.len()).map_err(|_| Error::Invalid)?);
         self.bytes(value);
@@ -41,6 +42,7 @@ impl<'a> Reader<'a> {
     pub(crate) fn u64(&mut self) -> Result<u64, Error> {
         Ok(u64::from_be_bytes(self.array()?))
     }
+    #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
     pub(crate) fn var(&mut self, max: usize) -> Result<&'a [u8], Error> {
         let n = usize::try_from(self.u32()?).map_err(|_| Error::Crypto)?;
         if n > max {
