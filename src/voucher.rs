@@ -136,7 +136,7 @@ mod tests {
     use czkp::standing::{Params, Q};
 
     fn device(role: u8, proven: u64) -> DeviceAllowance {
-        let policy = Policy::derive(Params::default()).unwrap();
+        let policy = Policy::derive(czkp::reference::params()).unwrap();
         let mut standing = State::new(100, 2 * Q);
         standing.g = 40 * Q;
         let account = Account {

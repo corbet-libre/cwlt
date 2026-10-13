@@ -32,9 +32,9 @@ fn context(engine: &Engine) -> GenesisContext {
             change_cost: 1,
             delay: 100,
             batch: 2,
-            standing: ExtensionPolicy::standing_digest(czkp::standing::Params::default()).unwrap(),
+            standing: ExtensionPolicy::standing_digest(czkp::reference::params()).unwrap(),
         },
-        standing: czkp::standing::Params::default(),
+        standing: czkp::reference::params(),
         bond: None,
         enrollment: Enrollment {
             member: [3; 32],

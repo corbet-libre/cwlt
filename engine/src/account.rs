@@ -9,9 +9,9 @@ mod policy;
 mod prepared;
 
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
-pub use czkp::ProofScope as GenesisProofScope;
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use activation::{ActivationProof, ActivationRequest, prove_activation};
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+pub use czkp::ProofScope as GenesisProofScope;
 pub use policy::{AccountPolicy, ExtensionPolicy};
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use prepared::{
