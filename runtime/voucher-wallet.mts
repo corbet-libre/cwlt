@@ -3,7 +3,7 @@
 // in the Rust planner (cwlt::witness) and czkp::voucher; the Noir relation constrains every
 // step. This file only builds witnesses for those actions.
 import {ExtensionWitness} from './extensions.mts';
-import {emptyAux} from './account.mts';
+import {emptyAux,enrollmentInput} from './account.mts';
 import {fieldBytes,limbs32} from '@corbet-labs/czkp/primitives';
 import {random} from '@corbet-labs/czkp/encoding';
 
@@ -16,7 +16,7 @@ const fromPlan=(e:any):BondEntry=>({limit:BigInt(e.limit),done:e.done,overshoot:
 
 export class VoucherWitness extends ExtensionWitness {
   /** Set by the counted settle wrappers for exactly one transition. */
-  pendingCount:{peer:Uint8Array}|undefined;
+  pendingCount:{peer:Uint8Array;enrollment:any}|undefined;
   /** The sponsor's private view of every bond it holds, keyed by the decimal bond-map key. */
   bondBook:Map<string,{secret:Uint8Array;entry:BondEntry}>=new Map();
   clone() {const copy=super.clone();copy.bondBook=new Map(this.bondBook);copy.pendingCount=undefined;return copy;}
@@ -32,6 +32,8 @@ export class VoucherWitness extends ExtensionWitness {
       const pair=await this.hashes.pairKey(this.community,this.owner.member,this.ownerSecret,this.pendingCount.peer);
       const counted=await this.pairs.update(pair,5n);
       input.pair_map=counted.witness;next.pairs=counted.next;
+      // The counted peer must prove its enrollment began before this account joined.
+      input.peer_enrollment=enrollmentInput(this.pendingCount.enrollment);
       this.pendingCount=undefined;
     }
     next.opening.voucher.bondRoot=next.bonds.root;next.opening.voucher.bondCount=next.bonds.count;
@@ -39,7 +41,7 @@ export class VoucherWitness extends ExtensionWitness {
   /** Settle an answered conversation and count its peer toward the success proof. */
   async settleCounted(event:bigint,resolution:any,acknowledgment:any,now:any,peerEnrollment:any,receiptOwnerEnrollment:any) {
     const slot=this.slots.get(event.toString());if(!slot)throw new Error('Unknown private obligation');
-    this.pendingCount={peer:slot.peer};
+    this.pendingCount={peer:slot.peer,enrollment:slot.peerEnrollment};
     try {return await this.settle(event,resolution,acknowledgment,now,peerEnrollment,receiptOwnerEnrollment);}
     finally {this.pendingCount=undefined;}
   }
@@ -49,7 +51,7 @@ export class VoucherWitness extends ExtensionWitness {
       for(let kind=1;kind<=1;kind++) {
         const commitment=await this.hashes.delivery(this.community,this.owner.member,s.peer,s,kind);
         if(Buffer.from(fieldBytes(commitment)).equals(Buffer.from(entry.commitment))) {
-          this.pendingCount={peer:s.peer};
+          this.pendingCount={peer:s.peer,enrollment:s.peerEnrollment};
           try {return await this.consume(entry,now);}
           finally {this.pendingCount=undefined;}
         }
