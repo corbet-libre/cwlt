@@ -41,7 +41,7 @@ for name, (maximum, expected) in pins.items():
         mismatched = True
 if mismatched:
     for name, value in actual.items():
-        print(f"CWLT-FIXTURE-DIGEST {name} {value}")
+        print(f"CWLT-FIXTURE-DIGEST {name} {value}", file=__import__("sys").stderr)
     raise SystemExit("Original retained fixture differs from its authenticated receipt")
 receipt = json.loads((source / "worker-receipt.json").read_text())
 manifest = json.loads((source / "manifest.json").read_text())
