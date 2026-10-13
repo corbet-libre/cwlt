@@ -12,7 +12,7 @@ if shared.name != "ccid-cached":
     raise SystemExit("Expected the original shared product cache mount")
 # Audited CBLC artifact-conformance retention (Barretenberg 5.2.1, one prover version
 # across server and wallet); not a download or a new cache format.
-source = shared / "08a9478e457e604aa31f9a54/release-artifacts/4a933fc30a8f8d9e1a5801ed2f826a82efd9b861/artifact-conformance"
+source = shared / "08a9478e457e604aa31f9a54/release-artifacts/5a8dd590235b83b2e4cf576fd4104bfd3e9b37e4/artifact-conformance"
 source = source.resolve(strict=True)
 pins = {
     "worker-receipt.json": (65536, "0b2c57f19c1440aaa55b62b3f27a57c96b8baec38a266ab291e719cc9a3b638d"),
@@ -22,6 +22,8 @@ pins = {
     "setup/g1.dat": (128 * 1024 * 1024, "23d5e6ef4d511367e83c0d909911b7cdd33f0b324d4106d57eefdf50fac6a59d"),
     "setup/g2.dat": (128, "01797bfc4de5a96f0e516a9ea4537d18786dc30cb991aca4274c95822b69c32f"),
 }
+actual = {}
+mismatched = False
 for name, (maximum, expected) in pins.items():
     path = (source / name).resolve(strict=True)
     if not path.is_relative_to(source) or not path.is_file() or path.stat().st_size > maximum:
@@ -34,11 +36,16 @@ for name, (maximum, expected) in pins.items():
             if count > maximum:
                 raise SystemExit("Original fixture grew past its bound")
             digest.update(data)
+    actual[name] = digest.hexdigest()
     if digest.hexdigest() != expected:
-        raise SystemExit("Original retained fixture differs from its authenticated receipt")
+        mismatched = True
+if mismatched:
+    for name, value in actual.items():
+        print(f"CWLT-FIXTURE-DIGEST {name} {value}")
+    raise SystemExit("Original retained fixture differs from its authenticated receipt")
 receipt = json.loads((source / "worker-receipt.json").read_text())
 manifest = json.loads((source / "manifest.json").read_text())
-if receipt["sourceCommit"] != "d6014acbef63f4cd0929b20091884dd422421fc3" or (
+if receipt["sourceCommit"] != "1be151807376447a1f0e0fe6d66040533f3ca0fd" or (
     manifest["compiler"], manifest["backend"], manifest["accountingMode"], manifest["numPoints"]
 ) != ("1.0.0-beta.26", "5.2.1", "account-extension-v1", 2621440):
     raise SystemExit("Original producer or artifact contract differs")
