@@ -32,8 +32,8 @@ native-verifier = ["wave", "dep:cvfy"]
 schema = ["wave", "dep:utoipa", "dep:schemars", "czkp/schema"]
 
 [dependencies]
-ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "v01", default-features = false, features = ["wallet-engine"], optional = true }
-cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "v01", optional = true }
+ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "main", default-features = false, features = ["wallet-engine"], optional = true }
+cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "main", optional = true }
 czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main" }
 blake3 = { version = "1.8", optional = true }
 utoipa = { version = "6", optional = true }
