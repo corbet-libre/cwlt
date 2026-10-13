@@ -22,7 +22,7 @@ fn params() -> StandingParams {
         mid_q: 49_152,
         kappa_q: 131_072,
         loan_use_q: 16_384,
-        voucher: VoucherParamsIn::default(),
+        voucher: VoucherParamsIn::from(&czkp::reference::params().voucher),
     }
 }
 
@@ -160,7 +160,7 @@ fn malformed_state_and_wire_input_fail_closed() {
     for text in ["", "{}", "null", "[]", &"x".repeat(8193)] {
         assert!(cwlt::prepare(text).is_err());
     }
-    let text = r#"{"old":{"reserved":0,"accepted":0,"declined":0,"punished":0},"standing":{"g":0,"a":131072,"c":0,"pr":0,"pg":0,"lc":0,"day":0},"params":{"c0":3,"hA":14,"hG":14,"nHalf":25,"nC":60,"eQ":16384,"rMax":40,"rAge":2,"cMaxQ":52428,"cVet":30,"ageVet":60,"boostQ":65536,"boostDays":30,"slopeQ":262144,"midQ":49152,"kappaQ":131072,"loanUseQ":16384},"createdAt":100,"now":200,"action":11,"amount":1,"role":0,"phase":1,"outcome":0,"kind":0,"answered":false,"selfPunished":false,"changeCost":1}"#;
+    let text = r#"{"old":{"reserved":0,"accepted":0,"declined":0,"punished":0},"standing":{"g":0,"a":131072,"c":0,"pr":0,"pg":0,"lc":0,"day":0},"params":{"c0":3,"hA":14,"hG":14,"nHalf":25,"nC":60,"eQ":16384,"rMax":40,"rAge":2,"cMaxQ":52428,"cVet":30,"ageVet":60,"boostQ":65536,"boostDays":30,"slopeQ":262144,"midQ":49152,"kappaQ":131072,"loanUseQ":16384,"voucher":{"slopeQ":[6554,131072,1638400],"min":[1,50,500],"max":[3,100,1000],"days":30,"k":3,"maxPunished":1,"brakeCap":1,"rewardCap":2}},"createdAt":100,"now":200,"action":11,"amount":1,"role":0,"phase":1,"outcome":0,"kind":0,"answered":false,"selfPunished":false,"changeCost":1}"#;
     let result: serde_json::Value = serde_json::from_str(&cwlt::prepare(text).unwrap()).unwrap();
     assert_eq!(result["cap"], 3);
     assert_eq!(result["policy"]["trust"].as_array().unwrap().len(), 65);

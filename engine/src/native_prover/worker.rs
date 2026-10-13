@@ -122,7 +122,7 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
         || request.srs_g2.len() != 128
         || sha(&request.srs_g2)? != request.srs_g2_digest
         || input.len() > 1024 * 1024
-        || request.public_inputs.len() != 377
+        || request.public_inputs.len() != 410
     {
         return Err(Error::Invalid);
     }
@@ -210,7 +210,7 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
         })?;
     *stage = 74; // Original result framing and VK equality.
     if !supplied_vk_response(&response.vk)
-        || response.public_inputs.len() != 377
+        || response.public_inputs.len() != 410
         || response.proof.is_empty()
         || response.proof.len() > MAX_PROOF / 32
         || response.proof.iter().any(|v| v.len() != 32)

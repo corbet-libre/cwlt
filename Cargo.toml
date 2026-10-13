@@ -57,6 +57,7 @@ wasm-bindgen-test = "0.3"
 tempfile = "3"
 
 [dev-dependencies]
+czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main", features = ["reference"] }
 ed25519-dalek = "3.0"
 futures = { version = "0.3", features = ["executor"] }
 p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }

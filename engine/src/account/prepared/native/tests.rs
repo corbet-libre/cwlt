@@ -36,9 +36,9 @@ pub(super) fn fixture() -> (Engine, GenesisContext) {
             change_cost: 1,
             delay: 100,
             batch: 2,
-            standing: ExtensionPolicy::standing_digest(czkp::standing::Params::default()).unwrap(),
+            standing: ExtensionPolicy::standing_digest(czkp::reference::params()).unwrap(),
         },
-        standing: czkp::standing::Params::default(),
+        standing: czkp::reference::params(),
         bond: None,
         enrollment: Enrollment {
             member: [3; 32],
@@ -89,7 +89,7 @@ fn original_update_proves_genesis_and_retains_same_private_candidate_without_ado
     let opening = zeroize::Zeroizing::new(candidate.opening.blind);
     let prover = NativeProver::new(crate::native_prover::tests::config()).unwrap();
     let proof = candidate.prove(&engine, &prover, || Ok(101)).unwrap();
-    assert_eq!(proof.public_inputs().len(), 377);
+    assert_eq!(proof.public_inputs().len(), 410);
     assert!(!proof.proof().is_empty());
     assert_eq!(
         proof.scope().circuit_digest.to_vec(),

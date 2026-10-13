@@ -52,8 +52,7 @@ pub struct StandingParams {
     pub mid_q: u64,
     pub kappa_q: u64,
     pub loan_use_q: u64,
-    /// Voucher parameters; the defaults apply when a caller predates them.
-    #[serde(default)]
+    /// Voucher parameters, from the same verified rulebook as the standing ones.
     pub voucher: VoucherParamsIn,
 }
 /// The rulebook-signed voucher parameters (czkp `VoucherParams`).
@@ -69,18 +68,17 @@ pub struct VoucherParamsIn {
     pub brake_cap: u64,
     pub reward_cap: u64,
 }
-impl Default for VoucherParamsIn {
-    fn default() -> Self {
-        let d = standing::VoucherParams::default();
+impl From<&standing::VoucherParams> for VoucherParamsIn {
+    fn from(params: &standing::VoucherParams) -> Self {
         VoucherParamsIn {
-            slope_q: d.slope_q,
-            min: d.min,
-            max: d.max,
-            days: d.days,
-            k: d.k,
-            max_punished: d.max_punished,
-            brake_cap: d.brake_cap,
-            reward_cap: d.reward_cap,
+            slope_q: params.slope_q,
+            min: params.min,
+            max: params.max,
+            days: params.days,
+            k: params.k,
+            max_punished: params.max_punished,
+            brake_cap: params.brake_cap,
+            reward_cap: params.reward_cap,
         }
     }
 }

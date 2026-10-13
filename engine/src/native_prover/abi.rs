@@ -300,7 +300,7 @@ pub(super) fn public_inputs(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Erro
             )?;
         }
     }
-    if public.len() != 377 {
+    if public.len() != 410 {
         return Err(Error::Invalid);
     }
     for field in &public {
@@ -333,7 +333,7 @@ pub(super) fn public_only(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Error>
             &mut result,
         )?;
     }
-    if result.len() != 377 {
+    if result.len() != 410 {
         return Err(Error::Invalid);
     }
     Ok(result)

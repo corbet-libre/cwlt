@@ -18,7 +18,7 @@ fn params() -> StandingParams {
         mid_q: 49_152,
         kappa_q: 131_072,
         loan_use_q: 16_384,
-        voucher: VoucherParamsIn::default(),
+        voucher: VoucherParamsIn::from(&czkp::reference::params().voucher),
     }
 }
 fn request(action: u8) -> Request {
