@@ -5,10 +5,11 @@
   "type": "module",
   "license": "LGPL-3.0-only WITH LGPL-3.0-linking-exception",
   "exports": {
-    "./account": "./runtime/account.mjs",
-    "./extensions": "./runtime/extensions.mjs",
+    "./account": "./runtime/account.mts",
+    "./extensions": "./runtime/extensions.mts",
     "./hashes": "./runtime/hashes.mjs",
-    "./wave-wallet": "./runtime/wave-wallet.mts"
+    "./wave-wallet": "./runtime/wave-wallet.mts",
+    "./voucher-wallet": "./runtime/voucher-wallet.mts"
   },
   "dependencies": {
     "@corbet-labs/czkp": "github:corbet-foss/czkp#main"

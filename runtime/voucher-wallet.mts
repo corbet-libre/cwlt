@@ -1,0 +1,69 @@
+// Voucher accounting on the wallet: the sponsor spends a voucher on an admission, consumes
+// bond-addressed obligations, and the account proves its own success. The integer rules live
+// in the Rust planner (cwlt::witness) and czkp::voucher; the Noir relation constrains every
+// step. This file only builds witnesses for those actions.
+import {ExtensionWitness} from './extensions.mts';
+import {emptyAux} from './account.mts';
+import {fieldBytes,limbs32} from '@corbet-labs/czkp/primitives';
+import {random} from '@corbet-labs/czkp/encoding';
+
+export const SUCCESS=1,PUNISHED=2,REWARD=3;
+/** What the sponsor remembers about one bond, as returned by the planner. */
+export interface BondEntry {limit:bigint;done:boolean;overshoot:boolean;punished_seen:bigint;rewards_seen:bigint}
+
+const entryPayload=(h:any,e:BondEntry)=>h.hash(64,[e.limit,e.done?1n:0n,e.overshoot?1n:0n,e.punished_seen,e.rewards_seen]);
+const fromPlan=(e:any):BondEntry=>({limit:BigInt(e.limit),done:e.done,overshoot:e.overshoot,punished_seen:BigInt(e.punishedSeen),rewards_seen:BigInt(e.rewardsSeen)});
+
+export class VoucherWitness extends ExtensionWitness {
+  /** Set by the counted settle wrappers for exactly one transition. */
+  pendingCount:{peer:Uint8Array}|undefined;
+  /** Bond map and answer counting must change before the commitment is computed. */
+  async beforeFinish(next:any,input:any) {
+    if(this.pendingCount) {
+      // The pair flips from 1 to 5: a distinct peer now counts toward the success proof.
+      const pair=await this.hashes.pairKey(this.community,this.owner.member,this.ownerSecret,this.pendingCount.peer);
+      const counted=await this.pairs.update(pair,5n);
+      input.pair_map=counted.witness;next.pairs=counted.next;input.aux.count=true;
+      this.pendingCount=undefined;
+    }
+    next.opening.voucher.bondRoot=next.bonds.root;next.opening.voucher.bondCount=next.bonds.count;
+  }
+  /** Settle an answered conversation and count its peer toward the success proof. */
+  async settleCounted(event:bigint,resolution:any,acknowledgment:any,now:any,peerEnrollment:any,receiptOwnerEnrollment:any) {
+    const slot=this.slots.get(event.toString());if(!slot)throw new Error('Unknown private obligation');
+    this.pendingCount={peer:slot.peer};
+    try {return await this.settle(event,resolution,acknowledgment,now,peerEnrollment,receiptOwnerEnrollment);}
+    finally {this.pendingCount=undefined;}
+  }
+  /** The sponsor spends one voucher on an actual admission and remembers the bond. */
+  async admit(bondSecret:Uint8Array,role:number,now:any) {
+    const input=this.input(random(),now),next=this.clone();
+    Object.assign(input,{action:12,role});
+    input.aux={...emptyAux(),bond_secret:bondSecret};
+    const entry=fromPlan(this.plan(input).entry);
+    const key=await this.hashes.hash(62,limbs32(bondSecret));
+    const inserted=await this.bonds.insert(key,await entryPayload(this.hashes,entry));
+    input.aux.bond_map=inserted.witness;next.bonds=inserted.next;
+    const result=await this.finish(next,input);
+    return {...result,entry};
+  }
+  /** Consume one obligation posted through the bond; the tag is the only thing a server saw. */
+  async consumeObligation(bondSecret:Uint8Array,kind:number,n:bigint,entry:BondEntry,now:any) {
+    const input=this.input(random(),now),next=this.clone();
+    const tag=await this.hashes.hash(60,[...limbs32(bondSecret),BigInt(kind),n]);
+    Object.assign(input,{action:13,obligation:fieldBytes(tag)});
+    input.aux={...emptyAux(),bond_secret:bondSecret,kind,n,entry};
+    const after=fromPlan(this.plan(input).entry);
+    const key=await this.hashes.hash(62,limbs32(bondSecret));
+    const changed=await this.bonds.update(key,await entryPayload(this.hashes,after));
+    input.aux.bond_map=changed.witness;next.bonds=changed.next;
+    const result=await this.finish(next,input);
+    return {...result,entry:after,tag:fieldBytes(tag)};
+  }
+  /** The account's own success proof; every threshold is a public policy value. */
+  async proveSuccess(now:any) {
+    const input=this.input(random(),now),next=this.clone();
+    input.action=14;
+    return this.finish(next,input);
+  }
+}

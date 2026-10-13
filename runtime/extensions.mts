@@ -1,6 +1,6 @@
 // Member-only witness construction. The supplied Rust planner owns integer
 // transitions; the authenticated Noir policy independently constrains every field.
-import {AccountWitness,enrollmentInput,openingInput,slotInput} from './account.mjs';
+import {AccountWitness,enrollmentInput,openingInput,slotInput} from './account.mts';
 import {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput} from './hashes.mjs';
 import {statementFromInput,publicInputValues,validityHorizon} from './statement.mjs';
 import {fieldBytes,fieldValue,limbs32} from '@corbet-labs/czkp/primitives';
@@ -29,13 +29,15 @@ export function extensionHashes(api) {
 const balanceKeys=['reserved','accepted','declined','punished'];
 const extendedOpening=s=>({...openingInput(s),...Object.fromEntries(balanceKeys.slice(1).map(k=>[k,s[k]])),inbox:s.inbox,authorization:s.authorization});
 const standingKeys=['g','a','c','pr','pg','lc','day'];
+const voucherKeys=['proven','away','lost','bonus','returned','answers'];
 export class ExtensionWitness extends AccountWitness {
   async commit(o,version) {
     for(const k of balanceKeys.slice(1))o[k]??=0n;
     o.inbox??=zeros();o.authorization??=0n;
     return this.hashes.hash(30,[...limbs32(this.community),...limbs32(this.owner.member),...limbs32(this.statePolicyHash),fieldValue(this.owner.secretHash),BigInt(version),
       await this.hashes.extension(this.extension),...balanceKeys.map(k=>BigInt(o[k])),...limbs32(o.inbox),o.authorization,
-      o.outgoingRoot,o.outgoingCount,o.incomingRoot,o.incomingCount,o.pairRoot,o.pairCount,o.createdAt,...standingKeys.map(k=>BigInt(o.standing[k])),...limbs32(o.blind)]);
+      o.outgoingRoot,o.outgoingCount,o.incomingRoot,o.incomingCount,o.pairRoot,o.pairCount,o.createdAt,...standingKeys.map(k=>BigInt(o.standing[k])),
+      ...voucherKeys.map(k=>BigInt(o.voucher[k])),o.voucher.sponsor,o.voucher.bond,o.voucher.bondRoot,o.voucher.bondCount,...limbs32(o.blind)]);
   }
   input(blind,now) {
     return {...super.input(blind,now),old:extendedOpening(this.opening),extension:extInput(this.extension),previous_inbox:this.opening.inbox,inbox:this.opening.inbox,
@@ -46,19 +48,24 @@ export class ExtensionWitness extends AccountWitness {
       standing=Object.fromEntries(standingKeys.map(k=>[k,Number(this.opening.standing[k])]));
     return this.transition({old,standing,params:this.standing,createdAt:Number(this.opening.createdAt),now:Number(input.now),action:input.action,amount:Number(s.amount),role:Number(s.role),
       phase:Number(s.phase),outcome:Number(s.outcome),answered:s.answered,selfPunished:s.self_punished,
-      kind:input.action===10?Number(input.delivery_kind):Number(input.resolution.kind),changeCost:this.extension.changeTokenCost});
+      kind:input.action===10?Number(input.delivery_kind):Number(input.resolution.kind),changeCost:this.extension.changeTokenCost,
+      voucher:Object.fromEntries(voucherKeys.map(k=>[k,Number(this.opening.voucher[k])])),voucherRole:Number(input.role),count:input.aux.count,
+      obligationKind:Number(input.aux.kind),obligationN:Number(input.aux.n),
+      entry:{limit:Number(input.aux.entry.limit),done:input.aux.entry.done,overshoot:input.aux.entry.overshoot,
+        punishedSeen:Number(input.aux.entry.punished_seen),rewardsSeen:Number(input.aux.entry.rewards_seen)}});
   }
   async finish(next,input) {
     const plan=this.plan(input);
     for(const k of balanceKeys)next.opening[k]=BigInt(plan.balances[k]);
     next.opening.standing=Object.fromEntries(standingKeys.map(k=>[k,BigInt(plan.standing[k])]));
+    for(const k of voucherKeys)next.opening.voucher[k]=BigInt(plan.voucher[k]);
     input.standing_policy=plan.policy;
     next.opening.inbox=bytes(input.inbox);
     next.opening.authorization=plan.authorization?await this.hashes.authorization(this.community,this.owner.member,this.ownerSecret,
       {peer:bytes(input.slot.peer),nonce:bytes(input.slot.nonce),group:bytes(input.slot.group)},plan.authorization):0n;
     const result=await super.finish(next,input);
     if(input.consume_only){next.version=this.version;next.commitment=await next.commit(next.opening,next.version);input.next_version=this.version;input.next_state=fieldBytes(next.commitment);result.statement=statementFromInput(input);}
-    result.update={previousInbox:{root:Array.from(input.previous_inbox)},inbox:{root:Array.from(input.inbox)},effect:input.action===9?{kind:'change',binding:Array.from(input.change_binding)}:{kind:'update'}};
+    result.update={previousInbox:{root:Array.from(input.previous_inbox)},inbox:{root:Array.from(input.inbox)},effect:input.action===9?{kind:'change',binding:Array.from(input.change_binding)}:input.action===12?{kind:'admit',role:Number(input.role)}:input.action===13?{kind:'consume',obligation:Array.from(input.obligation)}:{kind:'update'}};
     return result;
   }
   // A contact signature is supplied by the counterpart over contactBytes. Never

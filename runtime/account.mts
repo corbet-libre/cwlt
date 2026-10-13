@@ -1,4 +1,4 @@
-import { fieldBytes, fieldValue } from '@corbet-labs/czkp/primitives';
+import { fieldBytes, fieldValue, limbs32 } from '@corbet-labs/czkp/primitives';
 import { cat, be, random, zeros } from '@corbet-labs/czkp/encoding';
 import { IndexedMap, policyDigest, statePolicyDigest, integer, SAFE, POLICY_KEYS } from './hashes.mjs';
 import { refreshEnrollment, verifyEnrollmentPath, verifyReceiptEnrollment } from './enrollment.mjs';
@@ -14,7 +14,14 @@ export const openingInput = s => ({ reserved: s.reserved,
   outgoing_root: s.outgoingRoot, outgoing_count: s.outgoingCount,
   incoming_root: s.incomingRoot, incoming_count: s.incomingCount,
   pair_root: s.pairRoot, pair_count: s.pairCount,
-  created_at: s.createdAt, standing: standingInput(s.standing), blind: s.blind });
+  created_at: s.createdAt, standing: standingInput(s.standing), voucher: voucherInput(s.voucher), blind: s.blind });
+// The voucher part of the committed account: allowance counters, sponsor and bond commitments,
+// and the sponsor's private bond map (root and count).
+export const voucherInput = (v: any) => ({ proven: v.proven, away: v.away, lost: v.lost, bonus: v.bonus,
+  returned: v.returned, answers: v.answers, sponsor: v.sponsor, bond: v.bond, bond_root: v.bondRoot, bond_count: v.bondCount });
+export const emptyAux = (): any => ({ bond_secret: zeros(), kind: 0, n: 0n,
+  entry: { limit: 0n, done: false, overshoot: false, punished_seen: 0n, rewards_seen: 0n },
+  bond_map: emptyMapWitness(), sponsor: 0n, count: false });
 export const standingInput = t => ({ g: t.g, a: t.a, c: t.c, pr: t.pr, pg: t.pg, lc: t.lc, day: t.day });
 export const slotInput = s => ({ role: s.role, peer: s.peer, nonce: s.nonce, group: s.group,
   contact_policy: s.contactPolicy, amount: s.amount, phase: s.phase, outcome: s.outcome??0, answered:s.answered??false, self_punished:s.selfPunished??false,
@@ -27,7 +34,7 @@ const policyInput = p => Object.fromEntries(POLICY_WIRE.map(([key, wire]) => [wi
 // Local witness state. It is never accepted by an operator without a real proof
 // plus a durable accepted-state comparison. Returned candidates do not mutate it.
 export class AccountWitness {
-  static async genesis({ hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now, extension, transition, standing, policyTables }) {
+  static async genesis({ hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now, extension, transition, standing, policyTables, bond }: any) {
     const value = new this();
     Object.assign(value, { extension, transition, hashes, community, policy, checkpoint, ownerIndex, ownerSecret, now: BigInt(now), version: 0n });
     value.owner = checkpoint.entries[ownerIndex];
@@ -35,14 +42,21 @@ export class AccountWitness {
     value.statePolicyHash = await statePolicyDigest(community, policy);
     if (fieldValue(await hashes.secretHash(community, ownerSecret)) !== fieldValue(value.owner.secretHash)) throw new Error('Owner secret differs from verified enrollment');
     const empty = await IndexedMap.create(hashes);
-    value.outgoing = empty; value.incoming = empty.clone(); value.pairs = empty.clone();
+    value.outgoing = empty; value.incoming = empty.clone(); value.pairs = empty.clone(); value.bonds = empty.clone();
     value.slots = new Map();
     if (BigInt(policy.rateWindow) > 86400n) throw new Error('Proof window must not exceed one day');
     const horizon = validityHorizon(now, policy);
     value.opening = { reserved: 0n,
       outgoingRoot: empty.root, outgoingCount: 1n, incomingRoot: empty.root, incomingCount: 1n,
       pairRoot: empty.root, pairCount: 1n, createdAt: horizon,
-      standing: { g: 0n, a: (BigInt(standing.c0) - 1n) << 16n, c: 0n, pr: 0n, pg: 0n, lc: 0n, day: horizon / 86400n }, blind: random() };
+      standing: { g: 0n, a: (BigInt(standing.c0) - 1n) << 16n, c: 0n, pr: 0n, pg: 0n, lc: 0n, day: horizon / 86400n },
+      voucher: { proven: 0n, away: 0n, lost: 0n, bonus: 0n, returned: 0n, answers: 0n, sponsor: 0n, bond: 0n,
+        bondRoot: empty.root, bondCount: 1n }, blind: random() };
+    // A vouchee holds a bond with its sponsor; a founder holds none (both fields stay zero).
+    if (bond) {
+      value.opening.voucher.sponsor = await hashes.hash(63, [...limbs32(community), ...limbs32(bond.sponsor)]);
+      value.opening.voucher.bond = await hashes.hash(61, limbs32(bond.secret));
+    }
     value.standing = standing;
     value.commitment = await value.commit(value.opening, 0n);
     const input = value.input(value.opening.blind, now);
@@ -53,10 +67,13 @@ export class AccountWitness {
       createdAt: Number(value.opening.createdAt), now: Number(now), action: 11, amount: 0, role: 0, phase: 1, outcome: 0,
       answered: false, selfPunished: false, kind: 0, changeCost: 1 });
     input.standing_policy = first.policy;
+    if (bond) input.aux = { ...emptyAux(), bond_secret: bond.secret, sponsor: value.opening.voucher.sponsor };
     Object.assign(input, { genesis: true, previous_state: zeros(), next_state: fieldBytes(value.commitment),
       previous_version: 0n, next_version: 0n });
     return { input, statement: statementFromInput(input), next: value };
   }
+  /** Hook for voucher bookkeeping that must change maps before the commitment; empty here. */
+  async beforeFinish(_next: any, _input: any) {}
   async commit(opening, version) {
     return this.hashes.state(this.community, this.owner.member, this.statePolicyHash, this.owner.secretHash, version, opening);
   }
@@ -91,9 +108,11 @@ export class AccountWitness {
       slot: slotInput({ role: 0, peer: zeros(), nonce: zeros(), group: zeros(), contactPolicy: zeros(), amount: 0,
         phase: 1, admittedAt: BigInt(now), expiresAt: BigInt(now), peerAuthority: 0n, ownerAuthority: 0n }),
       own_map: emptyMapWitness(), opposite_map: emptyMapWitness(), pair_map: emptyMapWitness(), pair_exists: false,
-      resolution: resolutionInput(emptyResolution(now)), acknowledgment: { issued_at: BigInt(now), signature: new Uint8Array(64) } };
+      resolution: resolutionInput(emptyResolution(now)), acknowledgment: { issued_at: BigInt(now), signature: new Uint8Array(64) },
+      role: 0, obligation: zeros(), aux: emptyAux() };
   }
   async finish(next, input) {
+    await this.beforeFinish(next, input);
     next.now = BigInt(input.now);
     next.version = this.version + 1n;
     next.opening.outgoingRoot = next.outgoing.root; next.opening.outgoingCount = next.outgoing.count;
