@@ -93,7 +93,7 @@ fn original_update_proves_genesis_and_retains_same_private_candidate_without_ado
     assert_eq!(
         proof.scope().circuit_digest.to_vec(),
         data_encoding::HEXLOWER
-            .decode(b"b1bb892081b56e441211370c24e8f4371d053115e79e9a0011082131c79d375c")
+            .decode(b"6b6df70251e5de47b1014f381172ecd398219d6edfdd936f72484529a837403d")
             .unwrap()
     );
     assert!(
