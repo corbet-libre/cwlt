@@ -19,14 +19,19 @@ export class VoucherWitness extends ExtensionWitness {
   pendingCount:{peer:Uint8Array}|undefined;
   /** The sponsor's private view of every bond it holds, keyed by the decimal bond-map key. */
   bondBook:Map<string,{secret:Uint8Array;entry:BondEntry}>=new Map();
-  clone() {const copy=super.clone();copy.bondBook=new Map(this.bondBook);return copy;}
+  clone() {const copy=super.clone();copy.bondBook=new Map(this.bondBook);copy.pendingCount=undefined;return copy;}
+  /** The planner must see the counted flag, so it is set before the plan is computed. */
+  async finish(next:any,input:any) {
+    if(this.pendingCount)input.aux.count=true;
+    return super.finish(next,input);
+  }
   /** Bond map and answer counting must change before the commitment is computed. */
   async beforeFinish(next:any,input:any) {
     if(this.pendingCount) {
       // The pair flips from 1 to 5: a distinct peer now counts toward the success proof.
       const pair=await this.hashes.pairKey(this.community,this.owner.member,this.ownerSecret,this.pendingCount.peer);
       const counted=await this.pairs.update(pair,5n);
-      input.pair_map=counted.witness;next.pairs=counted.next;input.aux.count=true;
+      input.pair_map=counted.witness;next.pairs=counted.next;
       this.pendingCount=undefined;
     }
     next.opening.voucher.bondRoot=next.bonds.root;next.opening.voucher.bondCount=next.bonds.count;
@@ -37,6 +42,20 @@ export class VoucherWitness extends ExtensionWitness {
     this.pendingCount={peer:slot.peer};
     try {return await this.settle(event,resolution,acknowledgment,now,peerEnrollment,receiptOwnerEnrollment);}
     finally {this.pendingCount=undefined;}
+  }
+  /** Consume a delivered Answer and count its sender toward the success proof. */
+  async consumeCounted(entry:any,now:any) {
+    for(const [,s] of this.slots) {
+      for(let kind=1;kind<=1;kind++) {
+        const commitment=await this.hashes.delivery(this.community,this.owner.member,s.peer,s,kind);
+        if(Buffer.from(fieldBytes(commitment)).equals(Buffer.from(entry.commitment))) {
+          this.pendingCount={peer:s.peer};
+          try {return await this.consume(entry,now);}
+          finally {this.pendingCount=undefined;}
+        }
+      }
+    }
+    throw new Error('Answer delivery unavailable from authenticated contacts');
   }
   /** The sponsor spends one voucher on an actual admission and remembers the bond. */
   async admit(bondSecret:Uint8Array,role:number,now:any) {

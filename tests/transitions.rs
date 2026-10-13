@@ -230,3 +230,38 @@ fn voucher_actions_follow_the_accounting_rules() {
     r.now = 20 * 86_400;
     assert!(r.prepare().is_err());
 }
+
+/// The vouchee journey of the proof scenario: three counted Answers in the first days,
+/// then the success proof once the minimum membership has passed.
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
+fn a_vouchee_with_three_counted_answers_proves_success_after_the_waiting_days() {
+    let mut r = request(10);
+    r.old = Balances {
+        reserved: 3,
+        accepted: 0,
+        declined: 0,
+        punished: 0,
+    };
+    r.created_at = 120;
+    r.count = true;
+    r.phase = 1;
+    r.role = 0;
+    r.kind = 1;
+    for step in 0..3_u64 {
+        r.now = 200 + step * 10;
+        let plan = r.prepare().ok().unwrap();
+        r.old = plan.balances;
+        r.standing = plan.standing;
+        r.voucher = plan.voucher;
+    }
+    assert_eq!(r.voucher.answers, 3);
+    let mut prove = r;
+    prove.action = 14;
+    prove.now = 31 * 86_400 + 10;
+    let plan = prove.prepare().ok().unwrap();
+    assert_eq!(plan.voucher.proven, 31);
+    // One day short of the waiting period must fail.
+    prove.now = 29 * 86_400 + 10;
+    assert!(prove.prepare().is_err());
+}
