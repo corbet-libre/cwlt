@@ -5,6 +5,9 @@
 #![forbid(unsafe_code)]
 pub mod witness;
 
+/// Device-side voucher accounting port: allowance, admission spending and bond custody.
+pub mod voucher;
+
 /// Durable pending account-key custody. This grants no accepted account state.
 #[cfg(feature = "account")]
 pub mod account_owner;

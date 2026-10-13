@@ -16,6 +16,23 @@ pub(super) struct Standing {
     pub(super) day: u64,
 }
 
+/// The voucher part of the committed account (czkp `voucher::Account` plus the bond fields).
+#[derive(Clone, Copy, Zeroize)]
+pub(super) struct Voucher {
+    pub(super) proven: u64,
+    pub(super) away: u64,
+    pub(super) lost: u64,
+    pub(super) bonus: u64,
+    pub(super) returned: u64,
+    pub(super) answers: u64,
+    /// Member tag of the sponsor; zero for a founder.
+    pub(super) sponsor: Field,
+    /// Commitment to the bond secret; zero for a founder.
+    pub(super) bond: Field,
+    pub(super) bond_root: Field,
+    pub(super) bond_count: u64,
+}
+
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub(super) struct Opening {
     pub(super) reserved: u128,
@@ -32,6 +49,7 @@ pub(super) struct Opening {
     pub(super) pair_count: u64,
     pub(super) created_at: u64,
     pub(super) standing: Standing,
+    pub(super) voucher: Voucher,
     pub(super) blind: Field,
 }
 
@@ -58,6 +76,13 @@ impl Opening {
                 self.standing.pg,
                 self.standing.lc,
                 self.standing.day,
+                self.voucher.proven,
+                self.voucher.away,
+                self.voucher.lost,
+                self.voucher.bonus,
+                self.voucher.returned,
+                self.voucher.answers,
+                self.voucher.bond_count,
             ]
             .into_iter()
             .any(|v| v > czkp::MAX_INTEGER)
@@ -94,6 +119,16 @@ impl Opening {
             integer(self.standing.pg),
             integer(self.standing.lc),
             integer(self.standing.day),
+            integer(self.voucher.proven),
+            integer(self.voucher.away),
+            integer(self.voucher.lost),
+            integer(self.voucher.bonus),
+            integer(self.voucher.returned),
+            integer(self.voucher.answers),
+            self.voucher.sponsor,
+            self.voucher.bond,
+            self.voucher.bond_root,
+            integer(self.voucher.bond_count),
         ]);
         fields.extend(limbs(&self.blind));
         let result = hashes::hash(30, &fields);

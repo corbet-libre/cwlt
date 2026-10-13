@@ -16,7 +16,7 @@ pub use prepared::{
     PendingGenesisBinding, PreparedGenesisProof, ResponseTrust, SealedAcceptedAccount,
     SealedPendingGenesis,
 };
-pub use prepared::{Enrollment, GenesisContext, PreparedGenesis};
+pub use prepared::{Enrollment, GenesisContext, PreparedGenesis, VoucherBond};
 
 type Field = [u8; 32];
 

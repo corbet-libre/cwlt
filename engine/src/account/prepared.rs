@@ -2,7 +2,7 @@
 use super::{
     Field, hashes,
     maps::IndexedMap,
-    opening::{Opening, Standing},
+    opening::{Opening, Standing, Voucher},
     policy::{AccountPolicy, ExtensionPolicy},
 };
 use crate::{Engine, Error, sealing};
@@ -42,6 +42,16 @@ pub struct Enrollment {
     pub path: [[u8; 32]; 32],
 }
 
+/// The bond a vouchee holds with its sponsor, derived on both devices from the voucher
+/// exchange and kept in vault custody. It never leaves the device.
+#[derive(Clone, PartialEq, Eq)]
+pub struct VoucherBond {
+    /// The sponsor's community-scoped member id.
+    pub sponsor: [u8; 32],
+    /// The shared bond secret.
+    pub secret: [u8; 32],
+}
+
 /// Explicit public context data for private computation, never an accepted grant.
 /// The caller must separately authenticate current grant, policy and enrollment.
 #[derive(Clone, PartialEq, Eq)]
@@ -57,6 +67,8 @@ pub struct GenesisContext {
     /// The rulebook-signed standing parameters; their digest must equal
     /// `extension.standing`. The tables are derived here by czkp's single owner function.
     pub standing: czkp::standing::Params,
+    /// The bond with the sponsor when the account was admitted by a voucher; a founder has none.
+    pub bond: Option<VoucherBond>,
     /// Original published enrollment row for this owner.
     pub enrollment: Enrollment,
     /// Independently authenticated common enrollment root.
@@ -114,6 +126,17 @@ impl Engine {
         let outgoing = IndexedMap::create()?;
         let incoming = IndexedMap::create()?;
         let pairs = IndexedMap::create()?;
+        let bonds = IndexedMap::create()?;
+        let domain = hashes::domain(b"cfrm.account-state.v2");
+        let (sponsor, bond) = match &context.bond {
+            Some(b) if b.secret != [0; 32] && b.sponsor != [0; 32] => (
+                czkp::voucher::member_tag(&domain, &community, &b.sponsor)
+                    .map_err(|_| Error::Crypto)?,
+                czkp::voucher::bond_commit(&domain, &b.secret).map_err(|_| Error::Crypto)?,
+            ),
+            Some(_) => return Err(Error::Invalid),
+            None => ([0; 32], [0; 32]),
+        };
         let horizon = context.policy.horizon(context.checked_at)?;
         let opening = Opening {
             reserved: 0,
@@ -138,6 +161,18 @@ impl Engine {
                 pg: 0,
                 lc: 0,
                 day: horizon / 86_400,
+            },
+            voucher: Voucher {
+                proven: 0,
+                away: 0,
+                lost: 0,
+                bonus: 0,
+                returned: 0,
+                answers: 0,
+                sponsor,
+                bond,
+                bond_root: bonds.root(),
+                bond_count: bonds.count(),
             },
             blind,
         };

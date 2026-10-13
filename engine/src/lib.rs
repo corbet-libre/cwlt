@@ -85,7 +85,9 @@ impl Engine {
 
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use account::PreparedGenesisProof;
-pub use account::{AccountPolicy, Enrollment, ExtensionPolicy, GenesisContext, PreparedGenesis};
+pub use account::{
+    AccountPolicy, Enrollment, ExtensionPolicy, GenesisContext, PreparedGenesis, VoucherBond,
+};
 pub use recipient::{ReceivedRecord, RecordRecipient};
 pub use sealing::Sealed;
 

@@ -35,6 +35,7 @@ fn context(engine: &Engine) -> GenesisContext {
             standing: ExtensionPolicy::standing_digest(czkp::standing::Params::default()).unwrap(),
         },
         standing: czkp::standing::Params::default(),
+        bond: None,
         enrollment: Enrollment {
             member: [3; 32],
             key: [5; 64],

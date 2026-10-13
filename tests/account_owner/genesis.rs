@@ -69,6 +69,7 @@ pub(super) fn context<B: Backend>(owner: &DurableAccountOwner, store: &Store<B>)
             standing: ExtensionPolicy::standing_digest(czkp::standing::Params::default()).unwrap(),
         },
         standing: czkp::standing::Params::default(),
+        bond: None,
     }
 }
 

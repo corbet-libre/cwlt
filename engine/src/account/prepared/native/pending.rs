@@ -171,6 +171,16 @@ pub(super) fn write_context(w: &mut Writer, c: &GenesisContext) -> Result<(), Er
     ] {
         w.u64(v);
     }
+    let vp = &sp.voucher;
+    for v in vp.slope_q.iter().chain(&vp.min).chain(&vp.max).chain(&[
+        vp.days,
+        vp.k,
+        vp.max_punished,
+        vp.brake_cap,
+        vp.reward_cap,
+    ]) {
+        w.u64(*v);
+    }
     let r = &c.enrollment;
     w.bytes(&r.member);
     w.bytes(&r.key);
@@ -185,6 +195,14 @@ pub(super) fn write_context(w: &mut Writer, c: &GenesisContext) -> Result<(), Er
     }
     w.bytes(&c.enrollment_root);
     w.u64(c.checked_at);
+    match &c.bond {
+        Some(b) => {
+            w.bytes(&[1]);
+            w.bytes(&b.sponsor);
+            w.bytes(&b.secret);
+        }
+        None => w.bytes(&[0]),
+    }
     Ok(())
 }
 
@@ -233,6 +251,20 @@ pub(super) fn read_context(r: &mut Reader<'_>) -> Result<GenesisContext, Error> 
         mid_q: r.u64()?,
         kappa_q: r.u64()?,
         loan_use_q: r.u64()?,
+        voucher: {
+            let mut take3 = || -> Result<[u64; 3], Error> { Ok([r.u64()?, r.u64()?, r.u64()?]) };
+            let (slope_q, min, max) = (take3()?, take3()?, take3()?);
+            czkp::standing::VoucherParams {
+                slope_q,
+                min,
+                max,
+                days: r.u64()?,
+                k: r.u64()?,
+                max_punished: r.u64()?,
+                brake_cap: r.u64()?,
+                reward_cap: r.u64()?,
+            }
+        },
     };
     let mut enrollment = Enrollment {
         member: r.array()?,
@@ -248,15 +280,26 @@ pub(super) fn read_context(r: &mut Reader<'_>) -> Result<GenesisContext, Error> 
     for sibling in &mut enrollment.path {
         *sibling = r.array()?;
     }
+    let enrollment_root = r.array()?;
+    let checked_at = r.u64()?;
+    let bond = match r.array::<1>()?[0] {
+        0 => None,
+        1 => Some(crate::account::VoucherBond {
+            sponsor: r.array()?,
+            secret: r.array()?,
+        }),
+        _ => return Err(Error::Crypto),
+    };
     Ok(GenesisContext {
         community_id,
         owner,
         policy,
         extension,
         standing,
+        bond,
         enrollment,
-        enrollment_root: r.array()?,
-        checked_at: r.u64()?,
+        enrollment_root,
+        checked_at,
     })
 }
 

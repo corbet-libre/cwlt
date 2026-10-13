@@ -149,7 +149,10 @@ struct Public<'a> {
     refill_period: u64,
     refill_units: u32,
     abandon_after: u64,
+    role: u8,
+    obligation: [u8; 32],
 }
+const ZERO: [u8; 32] = [0; 32];
 struct Field<'a>(&'a [u8; 32]);
 impl Serialize for Field<'_> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
@@ -186,7 +189,40 @@ struct PrivateOpening<'a> {
     pair_count: u64,
     created_at: u64,
     standing: StandingJson,
+    voucher: VoucherJson<'a>,
     blind: &'a [u8; 32],
+}
+#[derive(Serialize)]
+struct VoucherJson<'a> {
+    proven: u64,
+    away: u64,
+    lost: u64,
+    bonus: u64,
+    returned: u64,
+    answers: u64,
+    sponsor: Field<'a>,
+    bond: Field<'a>,
+    bond_root: Field<'a>,
+    bond_count: u64,
+}
+#[derive(Serialize)]
+struct BondEntryJson {
+    limit: u64,
+    done: bool,
+    overshoot: bool,
+    punished_seen: u64,
+    rewards_seen: u64,
+}
+/// Private inputs of the voucher actions; at genesis only the bond and sponsor matter.
+#[derive(Serialize)]
+struct Aux<'a> {
+    bond_secret: &'a [u8; 32],
+    kind: u8,
+    n: u64,
+    entry: BondEntryJson,
+    bond_map: Map,
+    sponsor: Field<'a>,
+    count: bool,
 }
 #[derive(Serialize)]
 struct StandingJson {
@@ -218,6 +254,14 @@ struct StandingPolicyJson {
     kappa_q: u64,
     loan_use_q: u64,
     factor: u64,
+    v_slope: [u64; 3],
+    v_min: [u64; 3],
+    v_max: [u64; 3],
+    v_days: u64,
+    v_k: u64,
+    v_max_punished: u64,
+    v_brake_cap: u64,
+    v_reward_cap: u64,
     trust: Vec<u64>,
     g_table: Vec<u64>,
     a_table: Vec<u64>,
@@ -280,6 +324,7 @@ struct Witness<'a> {
     resolution: Resolution,
     acknowledgment: Ack,
     standing_policy: StandingPolicyJson,
+    aux: Aux<'a>,
 }
 fn standing_json(policy: &czkp::standing::Policy) -> Result<StandingPolicyJson, Error> {
     let p = &policy.params;
@@ -302,6 +347,14 @@ fn standing_json(policy: &czkp::standing::Policy) -> Result<StandingPolicyJson, 
         kappa_q: p.kappa_q,
         loan_use_q: p.loan_use_q,
         factor: policy.factor,
+        v_slope: p.voucher.slope_q,
+        v_min: p.voucher.min,
+        v_max: p.voucher.max,
+        v_days: p.voucher.days,
+        v_k: p.voucher.k,
+        v_max_punished: p.voucher.max_punished,
+        v_brake_cap: p.voucher.brake_cap,
+        v_reward_cap: p.voucher.reward_cap,
         trust: policy.trust.to_vec(),
         g_table: policy.g_table.to_vec(),
         a_table: policy.a_table.to_vec(),
@@ -345,6 +398,7 @@ impl PreparedGenesis {
         let p = &context.policy;
         let ext = &context.extension;
         let o = &self.opening;
+        let bond_secret = context.bond.as_ref();
         let standing =
             czkp::standing::Policy::derive(context.standing).map_err(|_| Error::Invalid)?;
         let statement = self.genesis_public();
@@ -387,6 +441,8 @@ impl PreparedGenesis {
             refill_period: p.refill_period,
             refill_units: p.refill_units,
             abandon_after: p.abandon_after,
+            role: 0,
+            obligation: [0; 32],
         };
         let public_json = serde_json::to_string(&public).map_err(|_| Error::Invalid)?;
         let expected = prover.public_inputs(&public_json)?;
@@ -420,6 +476,18 @@ impl PreparedGenesis {
                     pg: o.standing.pg,
                     lc: o.standing.lc,
                     day: o.standing.day,
+                },
+                voucher: VoucherJson {
+                    proven: o.voucher.proven,
+                    away: o.voucher.away,
+                    lost: o.voucher.lost,
+                    bonus: o.voucher.bonus,
+                    returned: o.voucher.returned,
+                    answers: o.voucher.answers,
+                    sponsor: Field(&o.voucher.sponsor),
+                    bond: Field(&o.voucher.bond),
+                    bond_root: Field(&o.voucher.bond_root),
+                    bond_count: o.voucher.bond_count,
                 },
                 blind: &o.blind,
             },
@@ -457,6 +525,21 @@ impl PreparedGenesis {
                 signature: vec![0; 64],
             },
             standing_policy: standing_json(&standing)?,
+            aux: Aux {
+                bond_secret: bond_secret.as_ref().map_or(&ZERO, |b| &b.secret),
+                kind: 0,
+                n: 0,
+                entry: BondEntryJson {
+                    limit: 0,
+                    done: false,
+                    overshoot: false,
+                    punished_seen: 0,
+                    rewards_seen: 0,
+                },
+                bond_map: empty(),
+                sponsor: Field(&self.opening.voucher.sponsor),
+                count: false,
+            },
         };
         let input = Zeroizing::new(serde_json::to_string(&witness).map_err(|_| Error::Invalid)?);
         let proof = prover.prove(input, expected, deadline)?;

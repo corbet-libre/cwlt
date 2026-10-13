@@ -80,9 +80,36 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("kappa_q", uint(64)),
         ("loan_use_q", uint(64)),
         ("factor", uint(64)),
+        ("v_slope", array(uint(64), 3)),
+        ("v_min", array(uint(64), 3)),
+        ("v_max", array(uint(64), 3)),
+        ("v_days", uint(64)),
+        ("v_k", uint(64)),
+        ("v_max_punished", uint(64)),
+        ("v_brake_cap", uint(64)),
+        ("v_reward_cap", uint(64)),
         ("trust", array(uint(64), 65)),
         ("g_table", array(uint(64), 64)),
         ("a_table", array(uint(64), 64)),
+    ]);
+    let voucher = structure(&[
+        ("proven", uint(64)),
+        ("away", uint(64)),
+        ("lost", uint(64)),
+        ("bonus", uint(64)),
+        ("returned", uint(64)),
+        ("answers", uint(64)),
+        ("sponsor", AbiType::Field),
+        ("bond", AbiType::Field),
+        ("bond_root", AbiType::Field),
+        ("bond_count", uint(64)),
+    ]);
+    let bond_entry = structure(&[
+        ("limit", uint(64)),
+        ("done", AbiType::Boolean),
+        ("overshoot", AbiType::Boolean),
+        ("punished_seen", uint(64)),
+        ("rewards_seen", uint(64)),
     ]);
     let opening = structure(&[
         ("reserved", uint(128)),
@@ -99,6 +126,7 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("pair_count", uint(64)),
         ("created_at", uint(64)),
         ("standing", standing),
+        ("voucher", voucher),
         ("blind", bytes(32)),
     ]);
     let slot = structure(&[
@@ -131,6 +159,15 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("signature", bytes(64)),
     ]);
     let ack = structure(&[("issued_at", uint(64)), ("signature", bytes(64))]);
+    let aux = structure(&[
+        ("bond_secret", bytes(32)),
+        ("kind", uint(8)),
+        ("n", uint(64)),
+        ("entry", bond_entry),
+        ("bond_map", map.clone()),
+        ("sponsor", AbiType::Field),
+        ("count", AbiType::Boolean),
+    ]);
     let public = [
         ("extension", extension),
         ("previous_inbox", bytes(32)),
@@ -163,6 +200,8 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("refill_period", uint(64)),
         ("refill_units", uint(32)),
         ("abandon_after", uint(64)),
+        ("role", uint(8)),
+        ("obligation", bytes(32)),
     ];
     let private = [
         ("owner_secret", bytes(32)),
@@ -182,6 +221,7 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("resolution", resolution),
         ("acknowledgment", ack),
         ("standing_policy", standing_policy),
+        ("aux", aux),
     ];
     public
         .into_iter()
