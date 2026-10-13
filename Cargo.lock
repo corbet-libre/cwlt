@@ -795,6 +795,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbcn"
+version = "0.1.0"
+source = "git+https://git.corbet.ch/corbet-foss/cbcn.git?branch=main#2a2dbbadabde75225fecc73e8975eff1576bbe2d"
+dependencies = [
+ "csgn",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cc"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1063,7 +1073,7 @@ dependencies = [
 [[package]]
 name = "cpsd"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cpsd?branch=main#908ceb88a2896baf6e633b30abcada2f25bcbabe"
+source = "git+https://git.corbet.ch/corbet-foss/cpsd?branch=main#c43253b08014f0aecb038055db099c018ae6f037"
 dependencies = [
  "ark-bls12-381",
  "ark-ec 0.4.2",
@@ -1264,6 +1274,7 @@ name = "cwlt"
 version = "0.0.0"
 dependencies = [
  "blake3",
+ "cbcn",
  "ckmg",
  "cpsd",
  "csgn",
@@ -1317,7 +1328,7 @@ dependencies = [
 [[package]]
 name = "cwlt-engine"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#eed2cc2b243c47b950489562bd8fbe384766c195"
+source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#58f190d58ac36327073622b6c1dd66338d9d99f7"
 dependencies = [
  "acvm",
  "barretenberg-rs",
