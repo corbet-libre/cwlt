@@ -33,6 +33,7 @@ native-verifier = ["wave", "dep:cvfy"]
 schema = ["wave", "dep:utoipa", "dep:schemars", "czkp/schema"]
 
 [dependencies]
+cwlt-engine = { path = "engine" }
 ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "main", default-features = false, features = ["wallet-engine"], optional = true }
 cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "main", optional = true }
 cbcn = { git = "https://git.corbet.ch/corbet-foss/cbcn.git", branch = "main", optional = true }

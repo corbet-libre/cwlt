@@ -25,6 +25,7 @@ mod tests;
 #[derive(Serialize)]
 pub(super) struct Request<'a> {
     pub scope: &'a czkp::ProofScope,
+    pub program: super::Program,
     pub circuit: &'a [u8],
     pub verification_key: &'a [u8],
     pub srs_g1: &'a [u8],
@@ -59,6 +60,7 @@ pub(super) fn prove(
     let bytes = Zeroizing::new(
         serde_json::to_vec(&Request {
             scope: &config.scope,
+            program: config.program,
             circuit: &config.circuit,
             verification_key: &config.verification_key,
             srs_g1: &config.srs_g1,

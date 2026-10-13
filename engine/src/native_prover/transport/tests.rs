@@ -27,6 +27,7 @@ fn fixture(dir: &Path, name: &str, body: &str) -> NativeProverConfig {
     NativeProverConfig {
         executable: path,
         executable_digest: sha(source.as_bytes()).unwrap(),
+        program: super::super::Program::Update,
         scope: czkp::ProofScope {
             circuit_digest: [1; 32],
             verifying_key_digest: [2; 32],

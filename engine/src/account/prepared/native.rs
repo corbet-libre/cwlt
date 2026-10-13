@@ -1,7 +1,7 @@
 //! Original typed genesis witness; private serialization stays inside this owner.
 use super::*;
+use crate::account::witness::{Account, Checkpoint, Genesis};
 use crate::native_prover::{NativeProver, Proof};
-use serde::{Serialize, Serializer};
 use std::time::Instant;
 mod acceptance;
 mod accepted;
@@ -107,279 +107,6 @@ impl PreparedGenesisProof {
         &self.proof.proof
     }
 }
-#[derive(Serialize)]
-struct Extension {
-    revision: u64,
-    quorum: u32,
-    change_cost: u32,
-    delay: u64,
-    batch: u8,
-    standing: [u8; 32],
-}
-#[derive(Serialize)]
-struct Public<'a> {
-    extension: Extension,
-    previous_inbox: [u8; 32],
-    inbox: [u8; 32],
-    consume_only: bool,
-    change_binding: [u8; 32],
-    community: &'a [u8; 32],
-    owner: &'a [u8; 32],
-    policy_digest: &'a [u8; 32],
-    enrollment_root: &'a [u8; 32],
-    now: u64,
-    valid_until: u64,
-    genesis: bool,
-    previous_version: u64,
-    next_version: u64,
-    previous_state: [u8; 32],
-    next_state: &'a [u8; 32],
-    settlement_marker: [u8; 32],
-    initial_credit: u32,
-    maximum_available: u32,
-    outgoing_reservation: u32,
-    incoming_reservation: u32,
-    policy_revision: u64,
-    policy_valid_from: u64,
-    policy_valid_until: u64,
-    newcomer_period: u64,
-    rate_window: u64,
-    newcomer_admissions: u32,
-    maximum_admissions: u32,
-    refill_period: u64,
-    refill_units: u32,
-    abandon_after: u64,
-    role: u8,
-    obligation: [u8; 32],
-}
-const ZERO: [u8; 32] = [0; 32];
-struct Field<'a>(&'a [u8; 32]);
-impl Serialize for Field<'_> {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&format!("0x{}", data_encoding::HEXLOWER.encode(self.0)))
-    }
-}
-#[derive(Serialize)]
-struct Row<'a> {
-    #[serde(serialize_with = "bytes64")]
-    key: &'a [u8; 64],
-    secret_hash: &'a [u8; 32],
-    start: u64,
-    end: u64,
-    delegation_digest: &'a [u8; 32],
-    path: Vec<Field<'a>>,
-    index: u32,
-}
-fn bytes64<S: Serializer>(bytes: &&[u8; 64], s: S) -> Result<S::Ok, S::Error> {
-    bytes.as_slice().serialize(s)
-}
-#[derive(Serialize)]
-struct PrivateOpening<'a> {
-    reserved: u128,
-    accepted: u64,
-    declined: u64,
-    punished: u64,
-    inbox: &'a [u8; 32],
-    authorization: Field<'a>,
-    outgoing_root: Field<'a>,
-    outgoing_count: u64,
-    incoming_root: Field<'a>,
-    incoming_count: u64,
-    pair_root: Field<'a>,
-    pair_count: u64,
-    created_at: u64,
-    standing: StandingJson,
-    voucher: VoucherJson<'a>,
-    blind: &'a [u8; 32],
-}
-#[derive(Serialize)]
-struct VoucherJson<'a> {
-    proven: u64,
-    away: u64,
-    lost: u64,
-    bonus: u64,
-    returned: u64,
-    answers: u64,
-    sponsor: Field<'a>,
-    bond: Field<'a>,
-    bond_root: Field<'a>,
-    bond_count: u64,
-}
-#[derive(Serialize)]
-struct BondEntryJson {
-    limit: u64,
-    done: bool,
-    overshoot: bool,
-    punished_seen: u64,
-    rewards_seen: u64,
-}
-/// Private inputs of the voucher actions; at genesis only the bond and sponsor matter.
-#[derive(Serialize)]
-struct Aux<'a> {
-    bond_secret: &'a [u8; 32],
-    kind: u8,
-    n: u64,
-    entry: BondEntryJson,
-    bond_map: Map,
-    sponsor: Field<'a>,
-    count: bool,
-}
-#[derive(Serialize)]
-struct StandingJson {
-    g: u64,
-    a: u64,
-    c: u64,
-    pr: u64,
-    pg: u64,
-    lc: u64,
-    day: u64,
-}
-#[derive(Serialize)]
-struct StandingPolicyJson {
-    c0: u64,
-    h_a: u64,
-    h_g: u64,
-    n_half: u64,
-    n_c: u64,
-    e_q: u64,
-    r_max: u64,
-    r_age: u64,
-    c_max_q: u64,
-    c_vet: u64,
-    age_vet: u64,
-    boost_q: u64,
-    boost_days: u64,
-    slope_q: u64,
-    mid_q: u64,
-    kappa_q: u64,
-    loan_use_q: u64,
-    factor: u64,
-    v_slope: [u64; 3],
-    v_min: [u64; 3],
-    v_max: [u64; 3],
-    v_days: u64,
-    v_k: u64,
-    v_max_punished: u64,
-    v_brake_cap: u64,
-    v_reward_cap: u64,
-    trust: Vec<u64>,
-    g_table: Vec<u64>,
-    a_table: Vec<u64>,
-}
-#[derive(Serialize)]
-struct Slot {
-    role: u8,
-    peer: [u8; 32],
-    nonce: [u8; 32],
-    group: [u8; 32],
-    contact_policy: [u8; 32],
-    amount: u32,
-    phase: u8,
-    outcome: u8,
-    answered: bool,
-    self_punished: bool,
-    admitted_at: u64,
-    expires_at: u64,
-    peer_authority: u8,
-    owner_authority: u8,
-}
-#[derive(Serialize)]
-struct Map {
-    leaf: [u8; 4],
-    index: u32,
-    path: [u8; 32],
-    append_path: [u8; 32],
-}
-#[derive(Serialize)]
-struct Resolution {
-    kind: u8,
-    issued_at: u64,
-    history_digest: [u8; 32],
-    ed25519_receipt_digest: [u8; 32],
-    signature: Vec<u8>,
-}
-#[derive(Serialize)]
-struct Ack {
-    issued_at: u64,
-    signature: Vec<u8>,
-}
-#[derive(Serialize)]
-struct Witness<'a> {
-    #[serde(flatten)]
-    public: &'a Public<'a>,
-    owner_secret: &'a [u8; 32],
-    owner_enrollment: Row<'a>,
-    peer_enrollment: Row<'a>,
-    receipt_owner_enrollment: Row<'a>,
-    delivery_kind: u8,
-    contact_signature: Vec<u8>,
-    old: PrivateOpening<'a>,
-    new_blind: &'a [u8; 32],
-    action: u8,
-    slot: Slot,
-    own_map: Map,
-    opposite_map: Map,
-    pair_map: Map,
-    pair_exists: bool,
-    resolution: Resolution,
-    acknowledgment: Ack,
-    standing_policy: StandingPolicyJson,
-    aux: Aux<'a>,
-}
-fn standing_json(policy: &czkp::standing::Policy) -> Result<StandingPolicyJson, Error> {
-    let p = &policy.params;
-    Ok(StandingPolicyJson {
-        c0: p.c0,
-        h_a: p.h_a,
-        h_g: p.h_g,
-        n_half: p.n_half,
-        n_c: p.n_c,
-        e_q: p.e_q,
-        r_max: p.r_max,
-        r_age: p.r_age,
-        c_max_q: p.c_max_q,
-        c_vet: p.c_vet,
-        age_vet: p.age_vet,
-        boost_q: p.boost_q,
-        boost_days: p.boost_days,
-        slope_q: p.slope_q,
-        mid_q: p.mid_q,
-        kappa_q: p.kappa_q,
-        loan_use_q: p.loan_use_q,
-        factor: policy.factor,
-        v_slope: p.voucher.slope_q,
-        v_min: p.voucher.min,
-        v_max: p.voucher.max,
-        v_days: p.voucher.days,
-        v_k: p.voucher.k,
-        v_max_punished: p.voucher.max_punished,
-        v_brake_cap: p.voucher.brake_cap,
-        v_reward_cap: p.voucher.reward_cap,
-        trust: policy.trust.to_vec(),
-        g_table: policy.g_table.to_vec(),
-        a_table: policy.a_table.to_vec(),
-    })
-}
-fn row(enrollment: &Enrollment) -> Row<'_> {
-    Row {
-        key: &enrollment.key,
-        secret_hash: &enrollment.secret_hash,
-        start: enrollment.starts_at,
-        end: enrollment.expires_at,
-        delegation_digest: &enrollment.delegation_digest,
-        path: enrollment.path.iter().map(Field).collect(),
-        index: enrollment.index,
-    }
-}
-fn empty() -> Map {
-    Map {
-        leaf: [0; 4],
-        index: 0,
-        path: [0; 32],
-        append_path: [0; 32],
-    }
-}
-
 impl PreparedGenesis {
     /// Consume this private candidate into the owned original native prover.
     /// Runtime supplies a real clock and freshly authorized Engine; no client
@@ -395,153 +122,32 @@ impl PreparedGenesis {
         let now = clock()?;
         self.check_context(engine, &self.context, now)?;
         let context = &self.context;
-        let p = &context.policy;
-        let ext = &context.extension;
-        let o = &self.opening;
-        let bond_secret = context.bond.as_ref();
-        let standing =
-            czkp::standing::Policy::derive(context.standing).map_err(|_| Error::Invalid)?;
-        let statement = self.genesis_public();
-        let public = Public {
-            extension: Extension {
-                revision: ext.revision,
-                quorum: ext.quorum,
-                change_cost: ext.change_cost,
-                delay: ext.delay,
-                batch: ext.batch,
-                standing: ext.standing,
+        // The one builder of the update input; genesis is its first transition.
+        let checkpoint = std::sync::Arc::new(Checkpoint::from_rows(
+            context.enrollment_root,
+            vec![context.enrollment.clone()],
+        )?);
+        let blind = self.opening.blind;
+        let built = Account::genesis(
+            Genesis {
+                community: self.community,
+                policy: context.policy,
+                extension: context.extension,
+                standing: context.standing,
+                checkpoint,
+                owner_index: 0,
+                owner_secret: &self.secret,
+                now: context.checked_at,
+                bond: context.bond.clone(),
             },
-            previous_inbox: [0; 32],
-            inbox: [0; 32],
-            consume_only: false,
-            change_binding: [0; 32],
-            community: &statement.community,
-            owner: &statement.owner,
-            policy_digest: &statement.policy_digest,
-            enrollment_root: &statement.enrollment_root,
-            now: statement.now,
-            valid_until: statement.valid_until,
-            genesis: statement.genesis,
-            previous_version: statement.previous_version,
-            next_version: statement.next_version,
-            previous_state: statement.previous_state,
-            next_state: &statement.next_state,
-            settlement_marker: statement.settlement_marker,
-            initial_credit: p.initial_credit,
-            maximum_available: p.maximum_available,
-            outgoing_reservation: p.outgoing_reservation,
-            incoming_reservation: p.incoming_reservation,
-            policy_revision: p.policy_revision,
-            policy_valid_from: p.policy_valid_from,
-            policy_valid_until: p.policy_valid_until,
-            newcomer_period: p.newcomer_period,
-            rate_window: p.rate_window,
-            newcomer_admissions: p.newcomer_admissions,
-            maximum_admissions: p.maximum_admissions,
-            refill_period: p.refill_period,
-            refill_units: p.refill_units,
-            abandon_after: p.abandon_after,
-            role: 0,
-            obligation: [0; 32],
-        };
-        let public_json = serde_json::to_string(&public).map_err(|_| Error::Invalid)?;
+            &mut || blind,
+        )?;
+        if built.next.state() != self.commitment {
+            return Err(Error::Invalid);
+        }
+        let public_json = built.input.public_json()?;
         let expected = prover.public_inputs(&public_json)?;
-        let witness = Witness {
-            public: &public,
-            owner_secret: &self.secret,
-            owner_enrollment: row(&context.enrollment),
-            peer_enrollment: row(&context.enrollment),
-            receipt_owner_enrollment: row(&context.enrollment),
-            delivery_kind: 0,
-            contact_signature: vec![0; 64],
-            old: PrivateOpening {
-                reserved: o.reserved,
-                accepted: o.accepted,
-                declined: o.declined,
-                punished: o.punished,
-                inbox: &o.inbox,
-                authorization: Field(&o.authorization),
-                outgoing_root: Field(&o.outgoing_root),
-                outgoing_count: o.outgoing_count,
-                incoming_root: Field(&o.incoming_root),
-                incoming_count: o.incoming_count,
-                pair_root: Field(&o.pair_root),
-                pair_count: o.pair_count,
-                created_at: o.created_at,
-                standing: StandingJson {
-                    g: o.standing.g,
-                    a: o.standing.a,
-                    c: o.standing.c,
-                    pr: o.standing.pr,
-                    pg: o.standing.pg,
-                    lc: o.standing.lc,
-                    day: o.standing.day,
-                },
-                voucher: VoucherJson {
-                    proven: o.voucher.proven,
-                    away: o.voucher.away,
-                    lost: o.voucher.lost,
-                    bonus: o.voucher.bonus,
-                    returned: o.voucher.returned,
-                    answers: o.voucher.answers,
-                    sponsor: Field(&o.voucher.sponsor),
-                    bond: Field(&o.voucher.bond),
-                    bond_root: Field(&o.voucher.bond_root),
-                    bond_count: o.voucher.bond_count,
-                },
-                blind: &o.blind,
-            },
-            new_blind: &o.blind,
-            action: 1,
-            slot: Slot {
-                role: 0,
-                peer: [0; 32],
-                nonce: [0; 32],
-                group: [0; 32],
-                contact_policy: [0; 32],
-                amount: 0,
-                phase: 1,
-                outcome: 0,
-                answered: false,
-                self_punished: false,
-                admitted_at: context.checked_at,
-                expires_at: context.checked_at,
-                peer_authority: 0,
-                owner_authority: 0,
-            },
-            own_map: empty(),
-            opposite_map: empty(),
-            pair_map: empty(),
-            pair_exists: false,
-            resolution: Resolution {
-                kind: 2,
-                issued_at: context.checked_at,
-                history_digest: [0; 32],
-                ed25519_receipt_digest: [0; 32],
-                signature: vec![0; 64],
-            },
-            acknowledgment: Ack {
-                issued_at: context.checked_at,
-                signature: vec![0; 64],
-            },
-            standing_policy: standing_json(&standing)?,
-            aux: Aux {
-                bond_secret: bond_secret.as_ref().map_or(&ZERO, |b| &b.secret),
-                kind: 0,
-                n: 0,
-                entry: BondEntryJson {
-                    limit: 0,
-                    done: false,
-                    overshoot: false,
-                    punished_seen: 0,
-                    rewards_seen: 0,
-                },
-                bond_map: empty(),
-                sponsor: Field(&self.opening.voucher.sponsor),
-                count: false,
-            },
-        };
-        let input = Zeroizing::new(serde_json::to_string(&witness).map_err(|_| Error::Invalid)?);
+        let input = built.input.to_json()?;
         let proof = prover.prove(input, expected, deadline)?;
         self.check_context(engine, &self.context, clock()?)?;
         Ok(PreparedGenesisProof {

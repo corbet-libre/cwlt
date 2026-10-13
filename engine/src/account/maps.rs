@@ -4,7 +4,6 @@
 use super::Field;
 use super::hashes;
 use crate::Error;
-#[cfg(test)]
 use czkp::poseidon::integer;
 use std::collections::BTreeMap;
 use zeroize::Zeroize;
@@ -13,19 +12,28 @@ pub(super) const DEPTH: usize = 32;
 const LIMIT: u64 = 1 << DEPTH;
 const ZERO: Field = [0; 32];
 
+/// Hash of two siblings in one of the two sparse trees (account maps or enrollment roster).
+pub(super) type NodeHash = fn(Field, Field) -> Result<Field, Error>;
+
+fn map_node(left: Field, right: Field) -> Result<Field, Error> {
+    hashes::hash(13, &[left, right])
+}
+
 #[derive(Clone)]
-struct SparseTree {
+pub(super) struct SparseTree {
+    node: NodeHash,
     empty: [Field; DEPTH + 1],
     nodes: BTreeMap<(usize, u64), Field>,
 }
 
 impl SparseTree {
-    fn create() -> Result<Self, Error> {
+    pub(super) fn create(node: NodeHash) -> Result<Self, Error> {
         let mut empty = [ZERO; DEPTH + 1];
         for level in 0..DEPTH {
-            empty[level + 1] = hashes::hash(13, &[empty[level], empty[level]])?;
+            empty[level + 1] = node(empty[level], empty[level])?;
         }
         Ok(Self {
+            node,
             empty,
             nodes: BTreeMap::new(),
         })
@@ -38,12 +46,11 @@ impl SparseTree {
             .unwrap_or(self.empty[level])
     }
 
-    fn root(&self) -> Field {
+    pub(super) fn root(&self) -> Field {
         self.at(DEPTH, 0)
     }
 
-    #[cfg(test)]
-    fn path(&self, mut position: u64) -> Result<[Field; DEPTH], Error> {
+    pub(super) fn path(&self, mut position: u64) -> Result<[Field; DEPTH], Error> {
         if position >= LIMIT {
             return Err(Error::Map);
         }
@@ -55,7 +62,7 @@ impl SparseTree {
         Ok(path)
     }
 
-    fn set(&mut self, mut position: u64, value: Field) -> Result<(), Error> {
+    pub(super) fn set(&mut self, mut position: u64, value: Field) -> Result<(), Error> {
         if position >= LIMIT {
             return Err(Error::Map);
         }
@@ -63,7 +70,7 @@ impl SparseTree {
         self.nodes.insert((0, position), value);
         for level in 0..DEPTH {
             let left = position & !1;
-            let parent = hashes::hash(13, &[self.at(level, left), self.at(level, left + 1)])?;
+            let parent = (self.node)(self.at(level, left), self.at(level, left + 1))?;
             position >>= 1;
             self.nodes.insert((level + 1, position), parent);
         }
@@ -72,7 +79,6 @@ impl SparseTree {
 }
 
 // These are private witnesses. No Debug, public serializer or opening accessor.
-#[cfg(test)]
 #[derive(Clone)]
 pub(super) struct Witness {
     pub(super) leaf: [Field; 4],
@@ -90,7 +96,7 @@ pub(super) struct IndexedMap {
 
 impl IndexedMap {
     pub(super) fn create() -> Result<Self, Error> {
-        let mut tree = SparseTree::create()?;
+        let mut tree = SparseTree::create(map_node)?;
         let leaf = [ZERO; 4];
         let value = hashes::hash(12, &leaf)?;
         tree.set(0, value)?;
@@ -108,14 +114,39 @@ impl IndexedMap {
         self.count
     }
 
-    #[cfg(test)]
+    /// Every leaf in position order (the tree is rebuilt from these on restore).
+    pub(super) fn leaves(&self) -> impl Iterator<Item = &[Field; 4]> {
+        self.leaves.values()
+    }
+
+    /// Rebuild a map from its leaves in position order; the positions must be 0..n.
+    pub(super) fn from_leaves(leaves: Vec<[Field; 4]>) -> Result<Self, Error> {
+        if leaves.is_empty()
+            || leaves.len() as u64 > LIMIT
+            || leaves[0][0] != ZERO
+            || leaves[0][1] != ZERO
+        {
+            return Err(Error::Map);
+        }
+        let mut tree = SparseTree::create(map_node)?;
+        let mut map = BTreeMap::new();
+        for (index, leaf) in leaves.iter().enumerate() {
+            tree.set(index as u64, hashes::hash(12, leaf)?)?;
+            map.insert(index as u64, *leaf);
+        }
+        Ok(Self {
+            tree,
+            count: map.len() as u64,
+            leaves: map,
+        })
+    }
+
     pub(super) fn find(&self, key: &Field) -> Option<u64> {
         self.leaves
             .iter()
             .find_map(|(index, leaf)| (&leaf[0] == key).then_some(*index))
     }
 
-    #[cfg(test)]
     pub(super) fn witness(&self, index: u64) -> Result<Witness, Error> {
         Ok(Witness {
             leaf: *self.leaves.get(&index).ok_or(Error::Map)?,
@@ -125,7 +156,6 @@ impl IndexedMap {
         })
     }
 
-    #[cfg(test)]
     pub(super) fn absence(&self, key: &Field) -> Result<Witness, Error> {
         czkp::field(key, true).map_err(|_| Error::Map)?;
         if self.find(key).is_some() {
@@ -142,7 +172,6 @@ impl IndexedMap {
     }
 
     // The accepted map is never mutated, including on a failed hash operation.
-    #[cfg(test)]
     pub(super) fn insert(&self, key: Field, payload: Field) -> Result<(Witness, Self), Error> {
         if self.count >= LIMIT {
             return Err(Error::Map);
@@ -165,7 +194,6 @@ impl IndexedMap {
         Ok((witness, next))
     }
 
-    #[cfg(test)]
     pub(super) fn update(&self, key: Field, payload: Field) -> Result<(Witness, Self), Error> {
         czkp::field(&key, true).map_err(|_| Error::Map)?;
         czkp::field(&payload, false).map_err(|_| Error::Map)?;
@@ -199,7 +227,6 @@ impl Drop for IndexedMap {
 #[cfg(test)]
 #[path = "maps/tests.rs"]
 mod tests;
-#[cfg(test)]
 impl Drop for Witness {
     fn drop(&mut self) {
         self.leaf.zeroize();

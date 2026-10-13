@@ -70,51 +70,7 @@ impl SealedPendingGenesis {
     }
 }
 
-pub(super) struct Writer(pub(super) Zeroizing<Vec<u8>>);
-impl Writer {
-    pub(super) fn bytes(&mut self, value: &[u8]) {
-        self.0.extend_from_slice(value);
-    }
-    pub(super) fn u32(&mut self, value: u32) {
-        self.bytes(&value.to_be_bytes());
-    }
-    pub(super) fn u64(&mut self, value: u64) {
-        self.bytes(&value.to_be_bytes());
-    }
-    pub(super) fn var(&mut self, value: &[u8]) -> Result<(), Error> {
-        self.u32(u32::try_from(value.len()).map_err(|_| Error::Invalid)?);
-        self.bytes(value);
-        Ok(())
-    }
-}
-
-pub(super) struct Reader<'a>(pub(super) &'a [u8]);
-impl<'a> Reader<'a> {
-    pub(super) fn take(&mut self, n: usize) -> Result<&'a [u8], Error> {
-        if self.0.len() < n {
-            return Err(Error::Crypto);
-        }
-        let (head, tail) = self.0.split_at(n);
-        self.0 = tail;
-        Ok(head)
-    }
-    pub(super) fn array<const N: usize>(&mut self) -> Result<[u8; N], Error> {
-        self.take(N)?.try_into().map_err(|_| Error::Crypto)
-    }
-    pub(super) fn u32(&mut self) -> Result<u32, Error> {
-        Ok(u32::from_be_bytes(self.array()?))
-    }
-    pub(super) fn u64(&mut self) -> Result<u64, Error> {
-        Ok(u64::from_be_bytes(self.array()?))
-    }
-    pub(super) fn var(&mut self, max: usize) -> Result<&'a [u8], Error> {
-        let n = usize::try_from(self.u32()?).map_err(|_| Error::Crypto)?;
-        if n > max {
-            return Err(Error::Crypto);
-        }
-        self.take(n)
-    }
-}
+pub(super) use crate::account::codec::{Reader, Writer};
 
 pub(super) fn write_context(w: &mut Writer, c: &GenesisContext) -> Result<(), Error> {
     w.var(c.community_id.as_bytes())?;

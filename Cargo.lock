@@ -1279,6 +1279,7 @@ dependencies = [
  "cpsd",
  "csgn",
  "cvfy",
+ "cwlt-engine 0.0.0",
  "cwst",
  "czkp",
  "ed25519-dalek",
