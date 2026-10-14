@@ -69,6 +69,49 @@ impl AcceptedAccount {
     pub fn extended_acceptance_digest(&self) -> [u8; 32] {
         self.extended_acceptance_digest
     }
+
+    /// The member-side witness of this accepted genesis account: the same committed
+    /// opening (the retained blind reproduces the accepted commitment exactly) with the
+    /// issuer's P-256 certificate of that state and the given current roster. Every later
+    /// update, reservation and wave proof is built from the returned account. It refuses
+    /// when the roster does not contain the owner under the same registered secret.
+    pub fn witness(
+        &self,
+        roster: std::sync::Arc<crate::account::witness::Checkpoint>,
+    ) -> Result<crate::account::witness::Account, Error> {
+        use crate::account::witness::{Account, Certificate, Checkpoint, Genesis};
+        let c = &self.candidate;
+        let context = &c.context;
+        let genesis_roster = std::sync::Arc::new(Checkpoint::from_rows(
+            context.enrollment_root,
+            vec![context.enrollment.clone()],
+        )?);
+        let blind = c.opening.blind;
+        let built = Account::genesis(
+            Genesis {
+                community: c.community,
+                policy: context.policy,
+                extension: context.extension,
+                standing: context.standing,
+                checkpoint: genesis_roster,
+                owner_index: 0,
+                owner_secret: &c.secret,
+                now: context.checked_at,
+                bond: context.bond.clone(),
+            },
+            &mut || blind,
+        )?;
+        if built.next.state() != c.commitment {
+            return Err(Error::Crypto);
+        }
+        built
+            .next
+            .with_certificate(Certificate {
+                accepted_at: self.response.issuer.accepted_at,
+                signature: self.response.certificate,
+            })
+            .with_checkpoint(roster)
+    }
 }
 
 impl AcceptedGenesisProof {

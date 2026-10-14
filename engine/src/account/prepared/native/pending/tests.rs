@@ -379,6 +379,19 @@ fn accepted_record_is_engine_written_distinct_and_restores_the_accepted_commitme
     assert_eq!(account.version(), 0);
     assert_eq!(account.accepted_at(), 150);
     assert!(account.response() == &good);
+    // The witness seam rebuilds the same committed opening from the sealed blind.
+    {
+        let roster = std::sync::Arc::new(
+            crate::account::witness::Checkpoint::from_rows(
+                context.enrollment_root,
+                vec![context.enrollment.clone()],
+            )
+            .unwrap(),
+        );
+        let witness = account.witness(roster).unwrap();
+        assert_eq!(witness.state(), account.state());
+        assert_eq!(witness.version(), 0);
+    }
     assert_eq!(
         account.extended_acceptance_digest(),
         activated.extended_acceptance_digest()
