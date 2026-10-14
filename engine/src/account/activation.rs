@@ -49,7 +49,7 @@ fn context(request: ActivationRequest, engine: &Engine) -> Result<GenesisContext
             secret_hash: projection.registered_secret,
             starts_at: request.policy.policy_valid_from,
             expires_at: request.policy.policy_valid_until,
-            delegation_digest: [0; 32],
+            delegation_digest: [1; 32],
             leaf: [0; 32],
             index: 0,
             path: [[0; 32]; 32],
