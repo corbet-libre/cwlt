@@ -1,12 +1,16 @@
 //! The contact transcript: both parties' consent to one exact introduction. The
 //! counterpart's device signs it with its enrollment key; the update circuit verifies that
 //! signature against the enrollment row before it activates a reservation.
-use super::{Account, Checkpoint, Field, Reserve};
+use super::{Account, Acknowledgment, Checkpoint, Field, Reserve, Resolution};
+use crate::account::Enrollment;
 use std::sync::Arc;
 use crate::{Error, account::hashes};
 use p256::ecdsa::{Signature, VerifyingKey, signature::hazmat::PrehashVerifier};
 
 const PREFIX: &[u8] = b"cblc.contact.v1\0";
+const RECEIPT: &[u8] = b"cmsg.accounting-receipt.v1\0";
+const RECEIPT_DIGEST: &[u8] = b"cmsg.accounting-receipt-digest.v1\0";
+const ACK: &[u8] = b"cmsg.accounting-ack.v1\0";
 
 impl Account {
     /// The digest both parties sign for the introduction `r` (same bytes for either role):
@@ -72,6 +76,108 @@ impl Account {
             .ok_or(Error::Invalid)?;
         let digest = self.contact_digest(r)?;
         verify_prehash(&peer.key, &digest, signature)
+    }
+
+    /// The roster rows of (initiator, recipient) of the introduction `r`, from this
+    /// account's point of view. The slot need not exist yet.
+    fn parties(&self, r: &Reserve) -> Result<(Enrollment, Enrollment), Error> {
+        let peer = self
+            .checkpoint
+            .entries()
+            .get(r.peer_index)
+            .ok_or(Error::Invalid)?
+            .clone();
+        let owner = self.owner().clone();
+        Ok(if r.role == 0 { (owner, peer) } else { (peer, owner) })
+    }
+
+    /// The signed bytes of the recipient's receipt (the circuit's `receipt_bytes`).
+    fn receipt_message(&self, r: &Reserve, receipt: &Resolution) -> Result<Vec<u8>, Error> {
+        let (initiator, recipient) = self.parties(r)?;
+        let mut bytes = Vec::with_capacity(357);
+        bytes.extend_from_slice(RECEIPT);
+        for field in [
+            &self.cx.community,
+            &recipient.member,
+            &initiator.member,
+            &initiator.member,
+            &r.nonce,
+            &r.group,
+            &recipient.delegation_digest,
+            &r.contact_policy,
+            &receipt.history_digest,
+            &receipt.ed25519_receipt_digest,
+        ] {
+            bytes.extend_from_slice(field);
+        }
+        bytes.push(receipt.kind);
+        bytes.push(1);
+        bytes.extend_from_slice(&receipt.issued_at.to_be_bytes());
+        debug_assert_eq!(bytes.len(), 357);
+        Ok(bytes)
+    }
+
+    /// The digest the recipient's account key signs to settle the introduction `r`
+    /// (Answer or Close). `r.role` is THIS account's role.
+    pub fn resolution_digest(&self, r: &Reserve, receipt: &Resolution) -> Result<Field, Error> {
+        if !matches!(receipt.kind, 1 | 2) {
+            return Err(Error::Invalid);
+        }
+        hashes::digest(&self.receipt_message(r, receipt)?)
+    }
+
+    /// Check the recipient's receipt signature against the recipient's roster key.
+    pub fn verify_resolution(&self, r: &Reserve, receipt: &Resolution) -> Result<(), Error> {
+        let (_, recipient) = self.parties(r)?;
+        let digest = self.resolution_digest(r, receipt)?;
+        verify_prehash(&recipient.key, &digest, &receipt.signature)
+    }
+
+    /// The digest the sender's account key signs to acknowledge the Answer `receipt` at
+    /// `issued_at`.
+    pub fn acknowledgment_digest(
+        &self,
+        r: &Reserve,
+        receipt: &Resolution,
+        issued_at: u64,
+    ) -> Result<Field, Error> {
+        if receipt.kind != 1 {
+            return Err(Error::Invalid);
+        }
+        let (initiator, recipient) = self.parties(r)?;
+        let mut answer = Vec::with_capacity(455);
+        answer.extend_from_slice(RECEIPT_DIGEST);
+        answer.append(&mut self.receipt_message(r, receipt)?);
+        answer.extend_from_slice(&receipt.signature);
+        let answer_digest = hashes::digest(&answer)?;
+        let mut bytes = Vec::with_capacity(255);
+        bytes.extend_from_slice(ACK);
+        for field in [
+            &self.cx.community,
+            &initiator.member,
+            &recipient.member,
+            &r.nonce,
+            &r.group,
+            &answer_digest,
+            &initiator.delegation_digest,
+        ] {
+            bytes.extend_from_slice(field);
+        }
+        bytes.extend_from_slice(&issued_at.to_be_bytes());
+        debug_assert_eq!(bytes.len(), 255);
+        hashes::digest(&bytes)
+    }
+
+    /// Check the sender's acknowledgment signature against the sender's roster key.
+    pub fn verify_acknowledgment(
+        &self,
+        r: &Reserve,
+        receipt: &Resolution,
+        ack: &Acknowledgment,
+    ) -> Result<(), Error> {
+        let (initiator, _) = self.parties(r)?;
+        let digest = self.acknowledgment_digest(r, receipt, ack.issued_at)?;
+        verify_prehash(&initiator.key, &digest, &ack.signature)
     }
 }
 
@@ -218,5 +324,38 @@ mod tests {
         let mut open = request(0, 1);
         open.opened_at = None;
         assert!(sender.contact_digest(&open).is_err());
+    }
+    #[test]
+    fn receipt_and_acknowledgment_digests_agree_on_both_sides() {
+        let (sender, recipient, sender_key, recipient_key) = pair();
+        let mut rng = || [77u8; 32];
+        let sender = sender.reserve(request(0, 1), 50, &mut rng).unwrap().next;
+        let recipient = recipient.reserve(request(1, 0), 50, &mut rng).unwrap().next;
+        let (s_event, r_event) = (request(0, 1), request(1, 0));
+        let mut receipt = Resolution {
+            kind: 1,
+            issued_at: 60,
+            history_digest: [3; 32],
+            ed25519_receipt_digest: [4; 32],
+            signature: [0; 64],
+        };
+        let digest = recipient.resolution_digest(&r_event, &receipt).unwrap();
+        assert_eq!(digest, sender.resolution_digest(&s_event, &receipt).unwrap());
+        receipt.signature = sign(&recipient_key, &digest);
+        sender.verify_resolution(&s_event, &receipt).unwrap();
+        recipient.verify_resolution(&r_event, &receipt).unwrap();
+        let mut forged = receipt.clone();
+        forged.history_digest = [9; 32];
+        assert!(sender.verify_resolution(&s_event, &forged).is_err());
+        let ack_digest = sender.acknowledgment_digest(&s_event, &receipt, 61).unwrap();
+        assert_eq!(ack_digest, recipient.acknowledgment_digest(&r_event, &receipt, 61).unwrap());
+        let ack = Acknowledgment { issued_at: 61, signature: sign(&sender_key, &ack_digest) };
+        recipient.verify_acknowledgment(&r_event, &receipt, &ack).unwrap();
+        let late = Acknowledgment { issued_at: 62, ..ack.clone() };
+        assert!(recipient.verify_acknowledgment(&r_event, &receipt, &late).is_err());
+        // A Close has no acknowledgment.
+        let mut close = receipt.clone();
+        close.kind = 2;
+        assert!(sender.acknowledgment_digest(&s_event, &close, 61).is_err());
     }
 }
