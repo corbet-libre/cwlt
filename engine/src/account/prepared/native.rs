@@ -196,6 +196,7 @@ struct PrivateOpening<'a> {
 struct VoucherJson<'a> {
     proven: u64,
     away: u64,
+    reserved: u64,
     lost: u64,
     bonus: u64,
     returned: u64,
@@ -223,6 +224,7 @@ struct Aux<'a> {
     bond_map: Map,
     sponsor: Field<'a>,
     count: bool,
+    units: u64,
 }
 #[derive(Serialize)]
 struct StandingJson {
@@ -480,6 +482,7 @@ impl PreparedGenesis {
                 voucher: VoucherJson {
                     proven: o.voucher.proven,
                     away: o.voucher.away,
+                    reserved: o.voucher.reserved,
                     lost: o.voucher.lost,
                     bonus: o.voucher.bonus,
                     returned: o.voucher.returned,
@@ -539,6 +542,7 @@ impl PreparedGenesis {
                 bond_map: empty(),
                 sponsor: Field(&self.opening.voucher.sponsor),
                 count: false,
+                units: 0,
             },
         };
         let input = Zeroizing::new(serde_json::to_string(&witness).map_err(|_| Error::Invalid)?);

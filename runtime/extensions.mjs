@@ -30,7 +30,7 @@ export function extensionHashes(api) {
 const balanceKeys=['reserved','accepted','declined','punished'];
 const extendedOpening=s=>({...openingInput(s),...Object.fromEntries(balanceKeys.slice(1).map(k=>[k,s[k]])),inbox:s.inbox,authorization:s.authorization});
 const standingKeys=['g','a','c','pr','pg','lc','day'];
-const voucherKeys=['proven','away','lost','bonus','returned','answers'];
+const voucherKeys=['proven','away','reserved','lost','bonus','returned','answers'];
 export class ExtensionWitness extends AccountWitness {
   async commit(o,version) {
     for(const k of balanceKeys.slice(1))o[k]??=0n;
@@ -51,7 +51,7 @@ export class ExtensionWitness extends AccountWitness {
       phase:Number(s.phase),outcome:Number(s.outcome),answered:s.answered,selfPunished:s.self_punished,
       kind:input.action===10?Number(input.delivery_kind):Number(input.resolution.kind),changeCost:this.extension.changeTokenCost,
       voucher:Object.fromEntries(voucherKeys.map(k=>[k,Number(this.opening.voucher[k])])),voucherRole:Number(input.role),count:input.aux.count,
-      obligationKind:Number(input.aux.kind),obligationN:Number(input.aux.n),
+      obligationKind:Number(input.aux.kind),obligationN:Number(input.aux.n),units:Number(input.aux.units??0),
       entry:{limit:Number(input.aux.entry.limit),done:input.aux.entry.done,overshoot:input.aux.entry.overshoot,
         punishedSeen:Number(input.aux.entry.punished_seen),rewardsSeen:Number(input.aux.entry.rewards_seen)}});
   }

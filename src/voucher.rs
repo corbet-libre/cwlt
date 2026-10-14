@@ -78,6 +78,20 @@ impl DeviceAllowance {
         self.remaining() > 0
     }
 
+    /// A link of `uses` admissions is created: reserve them against the allowance so a later
+    /// link or epoch cannot over-admit. Pairs with the issue presentation (update action 15).
+    pub fn reserve_link(&mut self, uses: u32) -> Result<(), Refused> {
+        let cap = self.standing.cap(&self.policy);
+        self.account
+            .reserve(&self.policy, self.role, cap, u64::from(uses))
+            .map_err(|_| Refused)
+    }
+
+    /// Unused uses of an expired, revoked or declined link return (update action 16).
+    pub fn release_link(&mut self, uses: u32) -> Result<(), Refused> {
+        self.account.release(u64::from(uses)).map_err(|_| Refused)
+    }
+
     /// An actual admission: take one voucher and remember the bond. A bounded overshoot
     /// from concurrent uses is accounted as permanently lost.
     pub fn spend_on_admission(&mut self, bond: &Bond) -> Result<Entry, Refused> {
@@ -192,6 +206,18 @@ mod tests {
         assert!(d.standing.pr > before);
         d.consume(&bond, voucher::REWARD, 1).unwrap();
         assert_eq!(d.account().bonus, 1);
+    }
+
+    #[test]
+    fn reserved_uses_leave_no_room_for_a_second_link_until_released() {
+        let mut d = device(0, 1);
+        let all = d.remaining();
+        assert!(all > 0);
+        d.reserve_link(all).unwrap();
+        assert!(!d.can_issue());
+        assert!(d.reserve_link(1).is_err());
+        d.release_link(all).unwrap();
+        assert_eq!(d.remaining(), all);
     }
 
     #[test]

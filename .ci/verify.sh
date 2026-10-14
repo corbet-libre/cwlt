@@ -15,6 +15,8 @@ python3 .github/check-first-party.py --metadata dependency-metadata.json
 python3 -B .github/test-engine-identity.py
 rustc --version
 cargo fmt --check || { cargo fmt; git diff > formatting.patch; exit 1; }
+# The committed .mjs under runtime/ must equal what tools/emit.mts generates from the .mts sources.
+node tools/emit.mts --check
 # Reuse the resolved original verifier owner's pinned SDK environment unchanged.
 python3 -B .ci/import-native-prover-sdk.py
 CWLT_NATIVE_PROVER_FIXTURE="$(python3 -B .ci/prepare-native-prover-fixture.py)"

@@ -55,6 +55,7 @@ fn request(action: u8) -> Request {
         count: false,
         obligation_kind: 0,
         obligation_n: 0,
+        units: 0,
         entry: BondEntryIo::default(),
     }
 }

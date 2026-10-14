@@ -95,6 +95,7 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
     let voucher = structure(&[
         ("proven", uint(64)),
         ("away", uint(64)),
+        ("reserved", uint(64)),
         ("lost", uint(64)),
         ("bonus", uint(64)),
         ("returned", uint(64)),
@@ -167,6 +168,7 @@ pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
         ("bond_map", map.clone()),
         ("sponsor", AbiType::Field),
         ("count", AbiType::Boolean),
+        ("units", uint(64)),
     ]);
     let public = [
         ("extension", extension),

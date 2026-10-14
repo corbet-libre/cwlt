@@ -18,11 +18,11 @@ export const openingInput = s => ({ reserved: s.reserved,
   created_at: s.createdAt, standing: standingInput(s.standing), voucher: voucherInput(s.voucher), blind: s.blind });
 // The voucher part of the committed account: allowance counters, sponsor and bond commitments,
 // and the sponsor's private bond map (root and count).
-export const voucherInput = (v     ) => ({ proven: v.proven, away: v.away, lost: v.lost, bonus: v.bonus,
+export const voucherInput = (v     ) => ({ proven: v.proven, away: v.away, reserved: v.reserved, lost: v.lost, bonus: v.bonus,
   returned: v.returned, answers: v.answers, sponsor: v.sponsor, bond: v.bond, bond_root: v.bondRoot, bond_count: v.bondCount });
 export const emptyAux = ()      => ({ bond_secret: zeros(), kind: 0, n: 0n,
   entry: { limit: 0n, done: false, overshoot: false, punished_seen: 0n, rewards_seen: 0n },
-  bond_map: emptyMapWitness(), sponsor: 0n, count: false });
+  bond_map: emptyMapWitness(), sponsor: 0n, count: false, units: 0n });
 export const standingInput = t => ({ g: t.g, a: t.a, c: t.c, pr: t.pr, pg: t.pg, lc: t.lc, day: t.day });
 export const slotInput = s => ({ role: s.role, peer: s.peer, nonce: s.nonce, group: s.group,
   contact_policy: s.contactPolicy, amount: s.amount, phase: s.phase, outcome: s.outcome??0, answered:s.answered??false, self_punished:s.selfPunished??false,
@@ -51,7 +51,7 @@ export class AccountWitness {
       outgoingRoot: empty.root, outgoingCount: 1n, incomingRoot: empty.root, incomingCount: 1n,
       pairRoot: empty.root, pairCount: 1n, createdAt: horizon,
       standing: { g: 0n, a: (BigInt(standing.c0) - 1n) << 16n, c: 0n, pr: 0n, pg: 0n, lc: 0n, day: horizon / 86400n },
-      voucher: { proven: 0n, away: 0n, lost: 0n, bonus: 0n, returned: 0n, answers: 0n, sponsor: 0n, bond: 0n,
+      voucher: { proven: 0n, away: 0n, reserved: 0n, lost: 0n, bonus: 0n, returned: 0n, answers: 0n, sponsor: 0n, bond: 0n,
         bondRoot: empty.root, bondCount: 1n }, blind: random() };
     // A vouchee holds a bond with its sponsor; a founder holds none (both fields stay zero).
     if (bond) {

@@ -60,6 +60,7 @@ fn request(action: u8) -> Request {
         count: false,
         obligation_kind: 0,
         obligation_n: 0,
+        units: 0,
         entry: BondEntryIo::default(),
     }
 }
@@ -180,6 +181,30 @@ fn voucher_actions_follow_the_accounting_rules() {
     let plan = request(12).prepare().ok().unwrap();
     assert_eq!((plan.voucher.away, plan.voucher.lost), (0, 1));
     assert!(plan.entry.overshoot);
+    // Reserving and releasing the uses of a link; an admission moves one unit to away.
+    let mut r = request(15);
+    r.voucher.proven = 1;
+    r.units = 1_000;
+    assert!(r.prepare().is_err());
+    r.units = 0;
+    assert!(r.prepare().is_err());
+    r.units = 1;
+    let plan = r.prepare().ok().unwrap();
+    assert_eq!(plan.voucher.reserved, 1);
+    // The reservation counts against the allowance: nothing is left for a second link.
+    r.voucher.reserved = 1;
+    assert!(r.prepare().is_err());
+    let mut r = request(12);
+    r.voucher.proven = 1;
+    r.voucher.reserved = 2;
+    let plan = r.prepare().ok().unwrap();
+    assert_eq!((plan.voucher.away, plan.voucher.reserved), (1, 1));
+    let mut r = request(16);
+    r.voucher.reserved = 1;
+    r.units = 2;
+    assert!(r.prepare().is_err());
+    r.units = 1;
+    assert_eq!(r.prepare().ok().unwrap().voucher.reserved, 0);
     // Success returns the voucher once.
     let mut r = request(13);
     r.voucher = VoucherAccount {

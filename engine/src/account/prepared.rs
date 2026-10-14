@@ -165,6 +165,7 @@ impl Engine {
             voucher: Voucher {
                 proven: 0,
                 away: 0,
+                reserved: 0,
                 lost: 0,
                 bonus: 0,
                 returned: 0,

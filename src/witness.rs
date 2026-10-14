@@ -149,6 +149,9 @@ pub struct Request {
     pub obligation_kind: u8,
     #[serde(default)]
     pub obligation_n: u64,
+    /// Uses reserved by a new link (action 15) or released by an ended one (action 16).
+    #[serde(default)]
+    pub units: u64,
     /// The sponsor's remembered entry for the bond (action 13).
     #[serde(default)]
     pub entry: BondEntryIo,
@@ -159,6 +162,8 @@ pub struct Request {
 pub struct VoucherAccount {
     pub proven: u64,
     pub away: u64,
+    #[serde(default)]
+    pub reserved: u64,
     pub lost: u64,
     pub bonus: u64,
     pub returned: u64,
@@ -314,6 +319,7 @@ impl Request {
         let mut account = voucher::Account {
             proven: self.voucher.proven,
             away: self.voucher.away,
+            reserved: self.voucher.reserved,
             lost: self.voucher.lost,
             bonus: self.voucher.bonus,
             returned: self.voucher.returned,
@@ -521,6 +527,16 @@ impl Request {
                 }
                 account.proven = self.now / DAY;
             }
+            15 => {
+                // A link of `units` uses is created.
+                account
+                    .reserve(&policy, self.voucher_role, cap, self.units)
+                    .map_err(|_| Invalid)?;
+            }
+            16 => {
+                // The unused uses of an expired, revoked or declined link return.
+                account.release(self.units).map_err(|_| Invalid)?;
+            }
             // 6 (refill) is retired: slots return on settlement.
             _ => return Err(Invalid),
         }
@@ -552,6 +568,7 @@ impl Request {
             voucher: VoucherAccount {
                 proven: account.proven,
                 away: account.away,
+                reserved: account.reserved,
                 lost: account.lost,
                 bonus: account.bonus,
                 returned: account.returned,

@@ -21,6 +21,7 @@ pub(super) struct Standing {
 pub(super) struct Voucher {
     pub(super) proven: u64,
     pub(super) away: u64,
+    pub(super) reserved: u64,
     pub(super) lost: u64,
     pub(super) bonus: u64,
     pub(super) returned: u64,
@@ -78,6 +79,7 @@ impl Opening {
                 self.standing.day,
                 self.voucher.proven,
                 self.voucher.away,
+                self.voucher.reserved,
                 self.voucher.lost,
                 self.voucher.bonus,
                 self.voucher.returned,
@@ -121,6 +123,7 @@ impl Opening {
             integer(self.standing.day),
             integer(self.voucher.proven),
             integer(self.voucher.away),
+            integer(self.voucher.reserved),
             integer(self.voucher.lost),
             integer(self.voucher.bonus),
             integer(self.voucher.returned),

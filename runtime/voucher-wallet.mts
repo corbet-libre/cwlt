@@ -86,6 +86,20 @@ export class VoucherWitness extends ExtensionWitness {
     const result=await this.finish(next,input);
     return {...result,entry:after,tag:fieldBytes(tag)};
   }
+  /** A link of `units` uses is created: its issue presentation reserved them (action 15). */
+  async reserveLink(units:bigint,role:number,now:any) {
+    const input=this.input(random(),now),next=this.clone();
+    Object.assign(input,{action:15,role});
+    input.aux={...emptyAux(),units};
+    return this.finish(next,input);
+  }
+  /** Unused uses of an expired, revoked or declined link return (action 16). */
+  async releaseLink(units:bigint,role:number,now:any) {
+    const input=this.input(random(),now),next=this.clone();
+    Object.assign(input,{action:16,role});
+    input.aux={...emptyAux(),units};
+    return this.finish(next,input);
+  }
   /** The account's own success proof; every threshold is a public policy value. */
   async proveSuccess(now:any) {
     const input=this.input(random(),now),next=this.clone();
