@@ -12,12 +12,12 @@ if shared.name != "ccid-cached":
     raise SystemExit("Expected the original shared product cache mount")
 # Audited CBLC artifact-conformance retention (Barretenberg 5.2.1, one prover version
 # across server and wallet); not a download or a new cache format.
-source = shared / "08a9478e457e604aa31f9a54/release-artifacts/eeb879eb8d5278924de5f665c8c43a5fa6d5bd71/artifact-conformance"
+source = shared / "08a9478e457e604aa31f9a54/release-artifacts/660e913088aa2d4b2a510143e66be31c9daed963/artifact-conformance"
 source = source.resolve(strict=True)
 pins = {
     "worker-receipt.json": (65536, "c24bd328405e0192423fc0ed925b08ca7d4992bdb4ac3c5e8ad839605df5cf10"),
-    "manifest.json": (65536, "68c5c8b4940800ef4c31df259545812215df665c055a48ff004eb05ea41aaf07"),
-    "circuits.json": (64 * 1024 * 1024, "89609daca158496d5fc7b028b89d33f6b72d7804ccc199125c7f8bb2b6259938"),
+    "manifest.json": (65536, "f935b80363c34496463b3b7f2a3270add37f52696e14d048c4c4c96aa478d228"),
+    "circuits.json": (64 * 1024 * 1024, "d05e0c72570ab4d5fcc0ab647c94fb417d03dcc15ab0f202a7a663a5512de0cb"),
     "keys.json": (1024 * 1024, "93652968e257953ce691e39e3da881eb098622db666dbb2c2cd219eabbbc4c1d"),
     "setup/g1.dat": (128 * 1024 * 1024, "23d5e6ef4d511367e83c0d909911b7cdd33f0b324d4106d57eefdf50fac6a59d"),
     "setup/g2.dat": (128, "01797bfc4de5a96f0e516a9ea4537d18786dc30cb991aca4274c95822b69c32f"),

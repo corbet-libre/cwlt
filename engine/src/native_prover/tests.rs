@@ -26,7 +26,7 @@ pub(crate) fn config() -> NativeProverConfig {
     let manifest = read(&directory.join("manifest.json"), 65_536);
     pin(
         &manifest,
-        "68c5c8b4940800ef4c31df259545812215df665c055a48ff004eb05ea41aaf07",
+        "f935b80363c34496463b3b7f2a3270add37f52696e14d048c4c4c96aa478d228",
     );
     let receipt = read(&directory.join("worker-receipt.json"), 65_536);
     pin(
@@ -36,7 +36,7 @@ pub(crate) fn config() -> NativeProverConfig {
     let circuit = read(&directory.join("circuits.json"), MAX_CIRCUIT);
     pin(
         &circuit,
-        "89609daca158496d5fc7b028b89d33f6b72d7804ccc199125c7f8bb2b6259938",
+        "d05e0c72570ab4d5fcc0ab647c94fb417d03dcc15ab0f202a7a663a5512de0cb",
     );
     let verification_key = read(&directory.join("keys.json"), MAX_PROOF);
     pin(
