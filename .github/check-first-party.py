@@ -11,12 +11,8 @@ from engine_identity import verified_engine_pair
 
 FIRST_PARTY = re.compile(r"^(?:git\+)?https://git\.corbet\.ch/(?:corbet-(?:foss|libs)|cmtymeet)/")
 SHA = re.compile(r"^[0-9a-f]{40}$")
-# The original receipt-capable custody owners are intentionally retained on v01.
-V01_OWNERS = {
-    'https://git.corbet.ch/corbet-foss/ckmg.git': 'ckmg',
-    'https://git.corbet.ch/corbet-foss/cwst.git': 'cwst',
-    'https://git.corbet.ch/corbet-foss/cdht.git': 'cdht',
-}
+# Every first-party repository converged on main; no owner keeps another line.
+V01_OWNERS = {}
 
 
 def owner_branch(repository, package):
