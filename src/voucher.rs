@@ -133,7 +133,7 @@ impl DeviceAllowance {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use czkp::standing::{Params, Q};
+    use czkp::standing::Q;
 
     fn device(role: u8, proven: u64) -> DeviceAllowance {
         let policy = Policy::derive(czkp::reference::params()).unwrap();
