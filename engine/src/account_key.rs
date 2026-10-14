@@ -5,7 +5,10 @@ use chacha20poly1305::{
     XNonce,
     aead::{Aead, Payload},
 };
-use p256::{ecdsa::SigningKey, elliptic_curve::Generate};
+use p256::{
+    ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner},
+    elliptic_curve::Generate,
+};
 use std::sync::Arc;
 use zeroize::Zeroizing;
 
@@ -135,6 +138,29 @@ impl AccountKey {
         })
     }
 
+    /// Sign one 32-byte digest with the account key: P-256, deterministic (RFC 6979), low-S,
+    /// the exact form the update circuit and `verify_prehash` accept. This is a raw
+    /// primitive: which digests may be signed, once per slot and phase, is decided by the
+    /// caller's Keys admission and ledger, never here. The engine must be the one that
+    /// restored this key.
+    pub fn sign_prehash(&self, engine: &Engine, digest: &[u8; 32]) -> Result<[u8; 64], Error> {
+        if self.seed[..] != engine.seed[..]
+            || !engine.sealing.matches_context(self.scope.as_bytes())
+        {
+            return Err(Error::Crypto);
+        }
+        let signature: Signature = self
+            .key
+            .sign_prehash(digest)
+            .map_err(|_| Error::Crypto)?;
+        let signature = signature.normalize_s();
+        signature
+            .to_bytes()
+            .as_slice()
+            .try_into()
+            .map_err(|_| Error::Crypto)
+    }
+
     /// Encrypt only the fixed private state under the original root/context.
     /// No caller-selected plaintext, key, nonce or context is accepted.
     pub fn seal(&self) -> Result<SealedAccountKey, Error> {
@@ -205,6 +231,21 @@ mod tests {
         assert!(original.restore_account_key(&sealed, "other").is_err());
         assert!(original.prepare_account_key("community", [0; 32]).is_err());
         assert!(original.prepare_account_key("other", [1; 32]).is_err());
+    }
+    #[test]
+    fn a_signature_verifies_for_its_projection_only_and_a_foreign_engine_cannot_sign() {
+        let engine = engine(7, 8, b"community");
+        let key = engine.prepare_account_key("community", [1; 32]).unwrap();
+        let public = key.projection(&engine).unwrap().public_key;
+        let digest = [9u8; 32];
+        let signature = key.sign_prehash(&engine, &digest).unwrap();
+        assert_eq!(signature, key.sign_prehash(&engine, &digest).unwrap());
+        crate::account::verify_prehash(&public, &digest, &signature).unwrap();
+        assert!(
+            crate::account::verify_prehash(&public, &[8; 32], &signature).is_err()
+        );
+        let other = self::engine(6, 8, b"community");
+        assert!(key.sign_prehash(&other, &digest).is_err());
     }
     #[test]
     fn authentic_nonpending_tag_and_zero_operation_never_restore() {

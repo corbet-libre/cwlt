@@ -28,7 +28,7 @@ pub use witness::{
     Delivered, Delivery, Effect, Entropy, Evidence, ExtensionStatement, Genesis,
     MAX_ACCOUNT_SEALED, OsEntropy, PolicyStatement, RecordContext, RecordPurpose, Reserve,
     Resolution, RosterRow, SealedAccount, Settled, SettledOutcome, Slot, UpdateEffect, UpdateInput,
-    WaveContext,
+    WaveContext, verify_prehash,
 };
 
 type Field = [u8; 32];
