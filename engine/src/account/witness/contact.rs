@@ -358,4 +358,70 @@ mod tests {
         close.kind = 2;
         assert!(sender.acknowledgment_digest(&s_event, &close, 61).is_err());
     }
+    /// The recipient's whole settlement as the wave wallet runs it: reserve, activate under
+    /// the sender's contact signature, settle under the signed receipt (and the sender's
+    /// acknowledgment of an Answer), then the `outcome` evidence.
+    #[test]
+    fn signed_receipts_settle_the_recipient_slot_and_yield_the_outcome_evidence() {
+        for answer in [true, false] {
+            let (sender, recipient, sender_key, recipient_key) = pair();
+            let mut rng = || [77u8; 32];
+            let sender = sender.reserve(request(0, 1), 50, &mut rng).unwrap().next;
+            let (s_req, r_req) = (request(0, 1), request(1, 0));
+            let contact = sender.contact_digest(&s_req).unwrap();
+            let reserved = recipient.reserve(request(1, 0), 50, &mut rng).unwrap();
+            let event = reserved.event.unwrap();
+            let sender_signature = sign(&sender_key, &contact);
+            recipient.verify_contact(&r_req, &sender_signature).unwrap();
+            let active = reserved
+                .next
+                .activate(&event, 60, sender_signature, &mut rng)
+                .unwrap()
+                .next;
+            let mut receipt = Resolution {
+                kind: if answer { 1 } else { 2 },
+                issued_at: 50,
+                history_digest: [3; 32],
+                ed25519_receipt_digest: [4; 32],
+                signature: [0; 64],
+            };
+            receipt.signature = sign(
+                &recipient_key,
+                &active.resolution_digest(&r_req, &receipt).unwrap(),
+            );
+            let ack = answer.then(|| {
+                let digest = sender.acknowledgment_digest(&s_req, &receipt, 50).unwrap();
+                Acknowledgment { issued_at: 50, signature: sign(&sender_key, &digest) }
+            });
+            if let Some(ack) = &ack {
+                active.verify_acknowledgment(&r_req, &receipt, ack).unwrap();
+            }
+            let settled = active
+                .settle(&event, &receipt, ack.as_ref(), 70, None, None, &mut rng)
+                .unwrap()
+                .next
+                .with_certificate(crate::account::witness::Certificate {
+                    accepted_at: 70,
+                    signature: [1; 64],
+                });
+            let evidence = settled
+                .wave_evidence(
+                    &event,
+                    &crate::account::witness::WaveContext { history: [3; 32], challenge: [9; 32] },
+                    &[2; 32],
+                    &[6; 32],
+                    Some(&crate::account::witness::Settled {
+                        outcome: if answer {
+                            crate::account::witness::SettledOutcome::Answer
+                        } else {
+                            crate::account::witness::SettledOutcome::Close
+                        },
+                        resolution: Some(receipt),
+                        acknowledgment: ack,
+                    }),
+                )
+                .unwrap();
+            assert!(evidence.statement_json().unwrap().contains("\"outcome\""));
+        }
+    }
 }
