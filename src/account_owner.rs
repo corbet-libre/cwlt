@@ -90,6 +90,11 @@ impl DurableAccountOwner {
         })
     }
 
+    /// The restored account key, for the narrow exact-digest signing admissions only.
+    pub fn key(&self) -> &AccountKey {
+        &self.key
+    }
+
     /// Open only a real authenticated existing winner; absence never creates.
     pub fn open<B: Backend>(engine: Engine, store: &Store<B>, scope: &str) -> Result<Self, Error> {
         if !store.is_scope(scope) {

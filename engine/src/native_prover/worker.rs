@@ -1,7 +1,7 @@
 //! Original maintained ABI, ACVM and BB execution in one disposable process.
 use super::{
-    Error, MAX_CIRCUIT, MAX_FRAME, MAX_POINTS, MAX_PROOF, MAX_SETUP, Proof, abi, compression, sha,
-    update_key,
+    Error, MAX_CIRCUIT, MAX_FRAME, MAX_POINTS, MAX_PROOF, MAX_SETUP, Program, Proof, abi,
+    compression, program_key, sha,
 };
 use acvm::{
     FieldElement,
@@ -27,6 +27,7 @@ use zeroize::Zeroizing;
 #[serde(deny_unknown_fields)]
 struct Request {
     scope: czkp::ProofScope,
+    program: Program,
     circuit: Vec<u8>,
     verification_key: Vec<u8>,
     srs_g1: Vec<u8>,
@@ -122,25 +123,25 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
         || request.srs_g2.len() != 128
         || sha(&request.srs_g2)? != request.srs_g2_digest
         || input.len() > 1024 * 1024
-        || request.public_inputs.len() != 410
+        || request.public_inputs.len() != request.program.publics()
     {
         return Err(Error::Invalid);
     }
     *stage = 67; // Fixed original update artifact and ABI.
-    #[derive(Deserialize)]
-    struct Group {
-        update: ProgramArtifact,
-    }
-    let Group { update: artifact } =
+    let mut group: std::collections::BTreeMap<String, serde_json::Value> =
         serde_json::from_slice(&request.circuit).map_err(|_| Error::Invalid)?;
-    let verification_key = update_key(&request.verification_key)?;
+    let artifact: ProgramArtifact =
+        serde_json::from_value(group.remove(request.program.key()).ok_or(Error::Invalid)?)
+            .map_err(|_| Error::Invalid)?;
+    drop(group);
+    let verification_key = program_key(&request.verification_key, request.program.key())?;
     if artifact.noir_version != "1.0.0-beta.26"
         && !artifact.noir_version.starts_with("1.0.0-beta.26+")
     {
         return Err(Error::Invalid);
     }
-    abi::check(&artifact.abi)?;
-    if abi::public_inputs(&artifact.abi, &input)? != request.public_inputs {
+    abi::check(request.program, &artifact.abi)?;
+    if abi::public_inputs(request.program, &artifact.abi, &input)? != request.public_inputs {
         return Err(Error::Invalid);
     }
     let inputs = Format::Json
@@ -175,12 +176,11 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
     struct Encoded {
         bytecode: String,
     }
-    #[derive(Deserialize)]
-    struct EncodedGroup {
-        update: Encoded,
-    }
-    let EncodedGroup { update: encoded } =
+    let mut encoded_group: std::collections::BTreeMap<String, Encoded> =
         serde_json::from_slice(&request.circuit).map_err(|_| Error::Invalid)?;
+    let encoded = encoded_group
+        .remove(request.program.key())
+        .ok_or(Error::Invalid)?;
     // Scope remains the original complete compressed artifact group. Only the
     // maintained wrapper's gzip transport decoding precedes the same native API.
     let compressed_bytecode = BASE64
@@ -210,7 +210,7 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
         })?;
     *stage = 74; // Original result framing and VK equality.
     if !supplied_vk_response(&response.vk)
-        || response.public_inputs.len() != 410
+        || response.public_inputs.len() != request.program.publics()
         || response.proof.is_empty()
         || response.proof.len() > MAX_PROOF / 32
         || response.proof.iter().any(|v| v.len() != 32)

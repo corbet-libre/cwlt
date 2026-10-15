@@ -88,7 +88,7 @@ fn original_predecessor_then_append_paths_verify_without_mutating_prior_map() {
 
 #[test]
 fn full_width_current_circuit_indices_preserve_sparse_root_and_refuse_overflow() {
-    let mut tree = SparseTree::create().unwrap();
+    let mut tree = SparseTree::create(super::map_node).unwrap();
     tree.set(LIMIT - 1, integer(21)).unwrap();
     assert_eq!(
         root(integer(21), LIMIT - 1, &tree.path(LIMIT - 1).unwrap()),

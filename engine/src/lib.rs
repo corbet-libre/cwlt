@@ -11,6 +11,8 @@ pub mod account_key;
 /// Native private witness execution over the maintained original Noir/BB owners.
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub mod native_prover;
+/// Checked integer planning of every account transition (shared by native and wasm holders).
+pub mod plan;
 mod recipient;
 mod record;
 mod sealing;

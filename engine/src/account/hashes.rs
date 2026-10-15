@@ -18,7 +18,7 @@ pub(super) fn hash(tag: u64, fields: &[Field]) -> Result<Field, Error> {
     result
 }
 
-fn legacy(tag: u64, fields: &[Field]) -> Result<Field, Error> {
+pub(super) fn legacy(tag: u64, fields: &[Field]) -> Result<Field, Error> {
     let mut input = vec![domain(b"cfrm.accounting.poseidon2.v1"), integer(tag)];
     input.extend_from_slice(fields);
     let result = czkp::poseidon::hash(&input).map_err(|_| Error::Crypto);

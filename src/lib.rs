@@ -3,7 +3,7 @@
 //! Private member-side witness planning. Every result still needs a real proof
 //! of the independently authenticated policy circuit before an issuer accepts it.
 #![forbid(unsafe_code)]
-pub mod witness;
+pub use cwlt_engine::plan as witness;
 
 /// Device-side voucher accounting port: allowance, admission spending and bond custody.
 pub mod voucher;

@@ -62,6 +62,7 @@ pub(crate) fn config() -> NativeProverConfig {
     NativeProverConfig {
         executable,
         executable_digest,
+        program: super::Program::Update,
         scope: ProofScope {
             circuit_digest: sha(&circuit).unwrap(),
             verifying_key_digest: sha(&verification_key).unwrap(),

@@ -34,7 +34,7 @@ pub(super) struct Voucher {
     pub(super) bond_count: u64,
 }
 
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub(super) struct Opening {
     pub(super) reserved: u128,
     pub(super) accepted: u64,

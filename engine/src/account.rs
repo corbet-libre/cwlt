@@ -2,11 +2,13 @@
 //! No accepted account is installed or serialized by this behavioral stage.
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 mod activation;
+mod codec;
 mod hashes;
 mod maps;
 mod opening;
 mod policy;
 mod prepared;
+mod witness;
 
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use activation::{ActivationProof, ActivationRequest, prove_activation};
@@ -21,6 +23,13 @@ pub use prepared::{
     SealedPendingGenesis,
 };
 pub use prepared::{Enrollment, GenesisContext, PreparedGenesis, VoucherBond};
+pub use witness::{
+    Account, AccountStatement, Acknowledgment, BondEntry, Candidate, Certificate, Checkpoint,
+    Delivered, Delivery, Effect, Entropy, Evidence, ExtensionStatement, Genesis,
+    MAX_ACCOUNT_SEALED, OsEntropy, PolicyStatement, RecordContext, RecordPurpose, Reserve,
+    Resolution, RosterRow, SealedAccount, Settled, SettledOutcome, Slot, UpdateEffect, UpdateInput,
+    WaveContext, verify_prehash,
+};
 
 type Field = [u8; 32];
 

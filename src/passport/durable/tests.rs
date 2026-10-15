@@ -263,3 +263,125 @@ fn unknown_and_cancelled_actual_writes_require_original_store_reopen() {
         }
     });
 }
+
+/// Human time: a stamp request the person is confirming survives a restart, and the stamp the
+/// wallet answers with is presented after another reopen.
+async fn stamp_round_trip<B: Backend + Clone>(backend: B) {
+    const NOW: Timestamp = 3_600_200;
+    let mut rng = StdRng::seed_from_u64(804);
+    let cipher = cipher();
+    let mut store = Store::create(backend.clone(), &cipher, "wallet-test")
+        .await
+        .unwrap();
+    let mut holder = DurableHolder::create(initial(), &mut store, "wallet-test", [1; 32], &mut rng)
+        .await
+        .unwrap();
+    let params = cpsd::StampParams::new(86_400).unwrap();
+    let issuer =
+        cpsd::StampIssuerKey::generate(&mut rng, cpsd::KeyId::new("stamp").unwrap(), &params)
+            .unwrap();
+    let challenge = IssuanceChallenge::generate(&mut rng);
+    let scope = StampScope::new(
+        CommunityId::new(b"community").unwrap(),
+        CommunityFingerprint::from_bytes([3; 32]),
+    );
+    let action = StampAction::new(
+        ActionKind::new("device_join").unwrap(),
+        PayloadDigest::from_bytes([4; 32]),
+        StampSalt::from_bytes([5; 32]),
+    );
+    let request = holder
+        .prepare_begin_stamp(
+            &store,
+            [2; 32],
+            &mut rng,
+            issuer.public_key(),
+            &challenge,
+            &[(scope.clone(), action.clone())],
+            NOW,
+        )
+        .unwrap()
+        .commit(&mut holder, &mut store, &[], &[])
+        .await
+        .unwrap()
+        .unwrap();
+    // A second request waits until the pending one finishes or is cancelled.
+    assert!(
+        holder
+            .prepare_begin_stamp(
+                &store,
+                [3; 32],
+                &mut rng,
+                issuer.public_key(),
+                &challenge,
+                &[(scope.clone(), action.clone())],
+                NOW,
+            )
+            .unwrap()
+            .commit(&mut holder, &mut store, &[], &[])
+            .await
+            .unwrap()
+            .is_err()
+    );
+    drop(holder);
+    drop(store);
+    let mut store = Store::open(backend.clone(), &cipher, "wallet-test")
+        .await
+        .unwrap();
+    let mut holder = DurableHolder::open(initial(), &store, "wallet-test").unwrap();
+    assert!(
+        !holder
+            .session(&store)
+            .unwrap()
+            .stamp_covers(&scope, &action, NOW)
+    );
+    let blind = issuer
+        .issue_blind(&mut rng, &request, &challenge, 9, NOW)
+        .unwrap();
+    holder
+        .prepare_finish_stamp(&store, [4; 32], &mut rng, &blind, NOW)
+        .unwrap()
+        .commit(&mut holder, &mut store, &[], &[])
+        .await
+        .unwrap()
+        .unwrap();
+    drop(holder);
+    drop(store);
+    let mut store = Store::open(backend, &cipher, "wallet-test").await.unwrap();
+    let mut holder = DurableHolder::open(initial(), &store, "wallet-test").unwrap();
+    let session = holder.session(&store).unwrap();
+    assert!(session.stamp_covers(&scope, &action, NOW));
+    let presentation = session
+        .present_stamp(&mut rng, &scope, &action, NOW)
+        .unwrap();
+    let verified = cpsd::verify_stamp(
+        &[issuer.public_key().clone()],
+        &params,
+        &scope,
+        9,
+        &action,
+        &presentation,
+        NOW,
+    )
+    .unwrap();
+    let _ = verified;
+    // Cancelling with nothing pending keeps the retained stamp.
+    holder
+        .prepare_cancel_stamp(&store, [5; 32], &mut rng)
+        .unwrap()
+        .commit(&mut holder, &mut store, &[], &[])
+        .await
+        .unwrap();
+    assert!(
+        holder
+            .session(&store)
+            .unwrap()
+            .stamp_covers(&scope, &action, NOW)
+    );
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
+fn a_pending_stamp_and_its_stamp_survive_reopen() {
+    futures::executor::block_on(stamp_round_trip(cwst::backend::Memory::new()));
+}

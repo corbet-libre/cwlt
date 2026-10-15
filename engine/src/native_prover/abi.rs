@@ -250,7 +250,23 @@ fn same(actual: &AbiType, expected: &AbiType) -> bool {
         _ => actual == expected,
     }
 }
-pub(super) fn check(abi: &Abi) -> Result<(), Error> {
+pub(super) fn check(program: super::Program, abi: &Abi) -> Result<(), Error> {
+    if program != super::Program::Update {
+        // The authenticated circuit digest binds the compiled program; the ABI check is the
+        // exact public width and the absence of a return value.
+        let mut width = 0;
+        for p in abi
+            .parameters
+            .iter()
+            .filter(|p| p.visibility == AbiVisibility::Public)
+        {
+            width += type_width(&p.typ)?;
+        }
+        if abi.return_type.is_some() || width != program.publics() {
+            return Err(Error::Invalid);
+        }
+        return Ok(());
+    }
     let expected = expected();
     if abi.return_type.is_some()
         || abi.parameters.len() != expected.len()
@@ -263,6 +279,17 @@ pub(super) fn check(abi: &Abi) -> Result<(), Error> {
         return Err(Error::Invalid);
     }
     Ok(())
+}
+
+fn type_width(typ: &AbiType) -> Result<usize, Error> {
+    match typ {
+        AbiType::Field | AbiType::Integer { .. } | AbiType::Boolean => Ok(1),
+        AbiType::Array { length, typ } => Ok(*length as usize * type_width(typ)?),
+        AbiType::Struct { fields, .. } => fields
+            .iter()
+            .try_fold(0, |n, (_, t)| Ok(n + type_width(t)?)),
+        _ => Err(Error::Invalid),
+    }
 }
 
 fn flatten(value: &InputValue, typ: &AbiType, result: &mut Vec<[u8; 32]>) -> Result<(), Error> {
@@ -288,8 +315,12 @@ fn flatten(value: &InputValue, typ: &AbiType, result: &mut Vec<[u8; 32]>) -> Res
     }
     Ok(())
 }
-pub(super) fn public_inputs(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Error> {
-    check(abi)?;
+pub(super) fn public_inputs(
+    program: super::Program,
+    abi: &Abi,
+    json: &str,
+) -> Result<Vec<[u8; 32]>, Error> {
+    check(program, abi)?;
     let inputs = Format::Json.parse(json, abi).map_err(|_| Error::Invalid)?;
     abi.encode(&inputs, None).map_err(|_| Error::Invalid)?;
     let mut public = Vec::new();
@@ -302,7 +333,7 @@ pub(super) fn public_inputs(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Erro
             )?;
         }
     }
-    if public.len() != 410 {
+    if public.len() != program.publics() {
         return Err(Error::Invalid);
     }
     for field in &public {
@@ -311,8 +342,12 @@ pub(super) fn public_inputs(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Erro
     Ok(public)
 }
 
-pub(super) fn public_only(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Error> {
-    check(abi)?;
+pub(super) fn public_only(
+    program: super::Program,
+    abi: &Abi,
+    json: &str,
+) -> Result<Vec<[u8; 32]>, Error> {
+    check(program, abi)?;
     let public = Abi {
         parameters: abi
             .parameters
@@ -335,7 +370,7 @@ pub(super) fn public_only(abi: &Abi, json: &str) -> Result<Vec<[u8; 32]>, Error>
             &mut result,
         )?;
     }
-    if result.len() != 410 {
+    if result.len() != program.publics() {
         return Err(Error::Invalid);
     }
     Ok(result)

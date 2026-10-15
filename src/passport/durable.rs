@@ -194,6 +194,47 @@ impl DurableHolder {
     ) -> Result<Pending<()>> {
         self.prepare(store, operation, rng, |holder, _| holder.cancel_issuance())
     }
+    /// Stage one stamp request; the request is released only after its private opening has
+    /// committed, so the confirmation a person gives for it survives a restart.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_begin_stamp<B: Backend, R: rand::RngCore + rand::CryptoRng>(
+        &self,
+        store: &Store<B>,
+        operation: [u8; 32],
+        rng: &mut R,
+        issuer: &StampPublicKey,
+        challenge: &IssuanceChallenge,
+        actions: &[(StampScope, StampAction)],
+        now: Timestamp,
+    ) -> Result<Pending<std::result::Result<StampIssuanceRequest, cpsd::Error>>> {
+        self.prepare(store, operation, rng, |holder, rng| {
+            holder.begin_stamp(rng, issuer, challenge, actions, now)
+        })
+    }
+
+    /// Stage the stamp finish, including a refused answer that consumes the attempt.
+    pub fn prepare_finish_stamp<B: Backend, R: rand::RngCore + rand::CryptoRng>(
+        &self,
+        store: &Store<B>,
+        operation: [u8; 32],
+        rng: &mut R,
+        blind: &BlindStamp,
+        now: Timestamp,
+    ) -> Result<Pending<std::result::Result<(), cpsd::Error>>> {
+        self.prepare(store, operation, rng, |holder, _| {
+            holder.finish_stamp(blind, now)
+        })
+    }
+
+    /// Stage dropping a pending stamp request; retained stamps stay.
+    pub fn prepare_cancel_stamp<B: Backend, R: rand::RngCore + rand::CryptoRng>(
+        &self,
+        store: &Store<B>,
+        operation: [u8; 32],
+        rng: &mut R,
+    ) -> Result<Pending<()>> {
+        self.prepare(store, operation, rng, |holder, _| holder.cancel_stamp())
+    }
 }
 
 impl<T> Pending<T> {
@@ -268,6 +309,20 @@ impl DurableSession<'_> {
         now: Timestamp,
     ) -> std::result::Result<Presentation, cpsd::Error> {
         self.0.present(rng, expected, signed_request, now)
+    }
+    /// Whether an unexpired committed stamp approves `action` in `scope`.
+    pub fn stamp_covers(&self, scope: &StampScope, action: &StampAction, now: Timestamp) -> bool {
+        self.0.stamp_covers(scope, action, now)
+    }
+    /// Present the committed stamp for exactly `action` in `scope`.
+    pub fn present_stamp<R: rand::RngCore + rand::CryptoRng>(
+        &self,
+        rng: &mut R,
+        scope: &StampScope,
+        action: &StampAction,
+        now: Timestamp,
+    ) -> std::result::Result<StampPresentation, cpsd::Error> {
+        self.0.present_stamp(rng, scope, action, now)
     }
 }
 

@@ -82,6 +82,30 @@ impl From<&standing::VoucherParams> for VoucherParamsIn {
         }
     }
 }
+impl From<&standing::Params> for StandingParams {
+    fn from(p: &standing::Params) -> Self {
+        StandingParams {
+            c0: p.c0,
+            h_a: p.h_a,
+            h_g: p.h_g,
+            n_half: p.n_half,
+            n_c: p.n_c,
+            e_q: p.e_q,
+            r_max: p.r_max,
+            r_age: p.r_age,
+            c_max_q: p.c_max_q,
+            c_vet: p.c_vet,
+            age_vet: p.age_vet,
+            boost_q: p.boost_q,
+            boost_days: p.boost_days,
+            slope_q: p.slope_q,
+            mid_q: p.mid_q,
+            kappa_q: p.kappa_q,
+            loan_use_q: p.loan_use_q,
+            voucher: VoucherParamsIn::from(&p.voucher),
+        }
+    }
+}
 impl StandingParams {
     fn policy(&self) -> Result<Policy, Invalid> {
         Policy::derive(standing::Params {
@@ -198,7 +222,7 @@ pub struct Plan {
     pub entry: BondEntryIo,
 }
 /// The circuit's `StandingPolicy` input; its digest is bound by the rulebook signature.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct PolicyOut {
     pub c0: u64,
     pub h_a: u64,
@@ -230,7 +254,7 @@ pub struct PolicyOut {
     pub g_table: Vec<u64>,
     pub a_table: Vec<u64>,
 }
-fn policy_out(p: &Policy) -> PolicyOut {
+pub(crate) fn policy_out(p: &Policy) -> PolicyOut {
     let q = &p.params;
     PolicyOut {
         c0: q.c0,
@@ -586,5 +610,5 @@ impl Request {
 }
 
 #[cfg(test)]
-#[path = "../tests/internal/witness.rs"]
+#[path = "plan/tests.rs"]
 mod tests;
