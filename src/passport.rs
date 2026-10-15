@@ -2,8 +2,10 @@
 //! This wrapper delegates all credential and pseudonym work to Pseudonyms.
 
 pub use cpsd::{
-    AuthenticatedCommunity, BlindPassport, CommunityId, Error, IssuanceChallenge, IssuanceRequest,
-    IssuerPublicKey, IssuerTag, PassportAttributes, Presentation, Pseudonym, Timestamp, rand,
+    ActionKind, AuthenticatedCommunity, BlindPassport, BlindStamp, CommunityFingerprint,
+    CommunityId, Error, IssuanceChallenge, IssuanceRequest, IssuerPublicKey, IssuerTag,
+    PassportAttributes, PayloadDigest, Presentation, Pseudonym, StampAction, StampIssuanceRequest,
+    StampPresentation, StampPublicKey, StampSalt, StampScope, Timestamp, rand,
 };
 
 /// The passport and private issuance opening stay inside Wallet.
@@ -106,5 +108,44 @@ impl PassportSession<'_> {
         now: Timestamp,
     ) -> Result<Presentation, Error> {
         self.0.present(rng, expected, signed_request, now)
+    }
+    /// Begin one confirmation stamp for up to [`cpsd::STAMP_SLOTS`] actions; the opening stays
+    /// inside Wallet. Confirm the request with one user verification over its
+    /// [`StampIssuanceRequest::confirmation_challenge`].
+    pub fn begin_stamp<R: rand::RngCore + rand::CryptoRng>(
+        &mut self,
+        rng: &mut R,
+        issuer: &StampPublicKey,
+        challenge: &IssuanceChallenge,
+        actions: &[(StampScope, StampAction)],
+        now: Timestamp,
+    ) -> Result<StampIssuanceRequest, Error> {
+        self.0.begin_stamp(rng, issuer, challenge, actions, now)
+    }
+
+    /// Retain only a signature-verified stamp; an invalid answer consumes the attempt.
+    pub fn finish_stamp(&mut self, blind: &BlindStamp, now: Timestamp) -> Result<(), Error> {
+        self.0.finish_stamp(blind, now)
+    }
+
+    /// Drop a pending stamp request; retained stamps stay.
+    pub fn cancel_stamp(&mut self) {
+        self.0.cancel_stamp();
+    }
+
+    /// Whether an unexpired retained stamp approves `action` in `scope`.
+    pub fn stamp_covers(&self, scope: &StampScope, action: &StampAction, now: Timestamp) -> bool {
+        self.0.stamp_covers(scope, action, now)
+    }
+
+    /// Present the retained stamp for exactly `action` in `scope` under this holder's pseudonym.
+    pub fn present_stamp<R: rand::RngCore + rand::CryptoRng>(
+        &self,
+        rng: &mut R,
+        scope: &StampScope,
+        action: &StampAction,
+        now: Timestamp,
+    ) -> Result<StampPresentation, Error> {
+        self.0.present_stamp(rng, scope, action, now)
     }
 }
