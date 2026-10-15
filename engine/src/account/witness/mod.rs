@@ -29,8 +29,8 @@ mod statement;
 mod tests;
 
 pub use builders::{Acknowledgment, Delivered, Reserve, Resolution};
-pub use evidence::{Evidence, RecordContext, RecordPurpose, Settled, SettledOutcome, WaveContext};
 pub use contact::verify_prehash;
+pub use evidence::{Evidence, RecordContext, RecordPurpose, Settled, SettledOutcome, WaveContext};
 pub use input::UpdateInput;
 pub use roster::{Checkpoint, RosterRow};
 pub use sealed::{MAX_ACCOUNT_SEALED, SealedAccount};

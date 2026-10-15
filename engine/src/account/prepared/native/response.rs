@@ -23,8 +23,11 @@ pub struct Frontier {
 /// supplies it from the authenticated Balance publication, never from the response.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ResponseTrust {
-    /// Issuer P-256 certificate key, uncompressed affine coordinates.
-    pub certificate_key: [u8; 64],
+    /// The published certificate issuer key ring (retired keys stay with their
+    /// periods); each certificate is checked with the key of its own time.
+    pub certificate_keys: Vec<czkp::issuer_keys::CertificateKeyPeriod>,
+    /// The community identity (founding fingerprint) the certificates bind.
+    pub community_identity: [u8; 32],
     /// The still-valid frozen minimum frontier, when the material has one. Its
     /// presence makes an ancestry certificate mandatory; its absence forbids one.
     pub frontier: Option<Frontier>,
@@ -60,10 +63,12 @@ pub struct AcceptedResponse {
 pub(super) fn accepted_state(
     public: &GenesisPublic,
     scope: &czkp::ProofScope,
+    identity: &[u8; 32],
     at: u64,
 ) -> AcceptedState {
     AcceptedState {
         community: public.community,
+        identity: *identity,
         owner: public.owner,
         state: public.next_state,
         scope: scope.circuit_digest,
@@ -102,9 +107,12 @@ pub(super) fn verify_issuer_material(
     trust: &ResponseTrust,
 ) -> Result<(), Error> {
     let at = response.issuer.accepted_at;
-    accepted_state(public, scope, at)
-        .verify(&trust.certificate_key, &response.certificate)
-        .map_err(|_| Error::Crypto)?;
+    czkp::issuer_keys::verify_accepted(
+        &trust.certificate_keys,
+        &accepted_state(public, scope, &trust.community_identity, at),
+        &response.certificate,
+    )
+    .map_err(|_| Error::Crypto)?;
     match (&trust.frontier, &response.ancestry) {
         (None, None) => Ok(()),
         (Some(frontier), Some(ancestry)) => {
@@ -116,9 +124,12 @@ pub(super) fn verify_issuer_material(
             {
                 return Err(Error::Invalid);
             }
-            ancestry_body(public, scope, ancestry, at)
-                .verify(&trust.certificate_key, &ancestry.signature)
-                .map_err(|_| Error::Crypto)
+            czkp::issuer_keys::verify_ancestry(
+                &trust.certificate_keys,
+                &ancestry_body(public, scope, ancestry, at),
+                &ancestry.signature,
+            )
+            .map_err(|_| Error::Crypto)
         }
         // A frontier makes ancestry mandatory; without one it must be absent.
         _ => Err(Error::Invalid),

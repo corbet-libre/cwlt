@@ -341,7 +341,12 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                             .as_ref()
                             .expect("a punishment precedes the deposit"),
                         &bytes(&args["scope"]),
-                        &bytes(&args["issuer"]),
+                        &czkp::issuer_keys::CertificateKeyPeriod {
+                            public_key: bytes::<64>(&args["issuer"]).to_vec(),
+                            valid_from: num(&args["issuerValidFrom"]),
+                            valid_until: args.get("issuerValidUntil").map(num),
+                        },
+                        &bytes(&args["identity"]),
                         num(&args["epoch"]),
                     ),
                     "record" => me().record(&RecordContext {
@@ -412,7 +417,13 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                     "step {n} {op}: Rust accepted what TypeScript refused"
                 );
                 let input: Value = serde_json::from_str(&c.input.to_json().unwrap()).unwrap();
-                check(bless, &mut out["input"], &format!("step {n} {op} input"), &input, &step["input"]);
+                check(
+                    bless,
+                    &mut out["input"],
+                    &format!("step {n} {op} input"),
+                    &input,
+                    &step["input"],
+                );
                 check(
                     bless,
                     &mut out["statement"],
@@ -431,12 +442,21 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                     );
                 }
                 if bless {
-                    let hex: String = c.next.commitment.iter().map(|b| format!("{b:02x}")).collect();
+                    let hex: String = c
+                        .next
+                        .commitment
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect();
                     out["next"]["commitment"] = Value::String(hex);
                     out["next"]["version"] = Value::String(c.next.version.to_string());
                     out["next"]["reserved"] = Value::String(c.next.opening.reserved.to_string());
                 }
-                let want_next = if bless { out["next"].clone() } else { step["next"].clone() };
+                let want_next = if bless {
+                    out["next"].clone()
+                } else {
+                    step["next"].clone()
+                };
                 if let Some(e) = step.get("event").filter(|e| !e.is_null()) {
                     assert_eq!(c.event, Some(event(e)), "step {n} event");
                 }
@@ -475,7 +495,13 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                     assert!(c.entry == Some(entry_of(want)), "step {n} bond entry");
                 }
                 if let Some(want) = step.get("tag").filter(|t| !t.is_null()) {
-                    check(bless, &mut out["tag"], &format!("step {n} tag"), &c.tag, want);
+                    check(
+                        bless,
+                        &mut out["tag"],
+                        &format!("step {n} tag"),
+                        &c.tag,
+                        want,
+                    );
                 }
                 let who = who.unwrap();
                 let certificate = if op == "genesis" {

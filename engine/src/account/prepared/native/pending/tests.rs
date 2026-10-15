@@ -172,6 +172,8 @@ fn restored_candidate_still_requires_the_exact_operator_acceptance() {
     assert_eq!(accepted.accepted_at(), 150);
 }
 
+const IDENTITY: [u8; 32] = [12; 32];
+
 fn issuer() -> IssuerKey {
     IssuerKey::from_slice(&[11; 32]).unwrap()
 }
@@ -199,7 +201,12 @@ fn real_binding() -> PendingGenesisBinding {
 
 fn trust(frontier: Option<Frontier>) -> ResponseTrust {
     ResponseTrust {
-        certificate_key: issuer_public(&issuer()),
+        certificate_keys: vec![czkp::issuer_keys::CertificateKeyPeriod {
+            public_key: issuer_public(&issuer()).to_vec(),
+            valid_from: 1,
+            valid_until: None,
+        }],
+        community_identity: IDENTITY,
         frontier,
     }
 }
@@ -222,8 +229,9 @@ fn response(
     let message =
         acceptance_message(&public, &proof.context().policy, proof.scope(), binding, at).unwrap();
     // The issuer signs the bytes czkp encodes, exactly as the real issuer does.
-    let certificate: p256::ecdsa::Signature =
-        issuer().sign(&super::super::response::accepted_state(&public, proof.scope(), at).bytes());
+    let certificate: p256::ecdsa::Signature = issuer().sign(
+        &super::super::response::accepted_state(&public, proof.scope(), &IDENTITY, at).bytes(),
+    );
     let ancestry = with_frontier.then(|| {
         let mut ancestry = AncestryResponse {
             epoch: 3,
@@ -341,8 +349,28 @@ fn a_response_that_fails_any_check_never_advances_or_activates() {
         assert!(advance(&good, &trust(Some(changed))).is_err());
     }
     let mut wrong_key = live.clone();
-    wrong_key.certificate_key[0] ^= 1;
+    wrong_key.certificate_keys[0].public_key =
+        issuer_public(&IssuerKey::from_slice(&[13; 32]).unwrap()).to_vec();
     assert!(advance(&good, &wrong_key).is_err());
+    // A certificate bound to another community identity fails.
+    let mut other_identity = live.clone();
+    other_identity.community_identity = [14; 32];
+    assert!(advance(&good, &other_identity).is_err());
+    // The signing key verifies only inside its own period: retired before the
+    // acceptance (150) it fails, retired after it the old certificate still verifies.
+    let rotated = |until: u64| {
+        let mut ring = live.clone();
+        ring.certificate_keys[0].valid_until = Some(until);
+        ring.certificate_keys
+            .push(czkp::issuer_keys::CertificateKeyPeriod {
+                public_key: issuer_public(&IssuerKey::from_slice(&[13; 32]).unwrap()).to_vec(),
+                valid_from: until,
+                valid_until: None,
+            });
+        ring
+    };
+    assert!(advance(&good, &rotated(150)).is_err());
+    assert!(advance(&good, &rotated(151)).is_ok());
     // Activation uses the CURRENT trust: a changed frontier refuses the stored response.
     let accepted = engine.advance_pending(&sent, &good, &live, 102).unwrap();
     assert!(

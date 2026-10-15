@@ -8,7 +8,7 @@ use ckmg::wallet_engine::{
         AcceptanceBinding, AcceptedResponse, GenesisProofScope, GenesisPublic, IssuerAcceptance,
         PendingGenesisBinding, ResponseTrust,
     },
-    native_prover::{NativeProver, NativeProverConfig},
+    native_prover::{NativeProver, NativeProverConfig, Program},
 };
 use cwlt::account_owner::AccountGenesisProof;
 use ed25519_dalek::{Signer as _, SigningKey as OperatorKey};
@@ -44,6 +44,7 @@ fn prover() -> NativeProver {
             circuit_digest: sha(&circuit),
             verifying_key_digest: sha(&keys),
         },
+        program: Program::Update,
         circuit,
         verification_key: keys,
         srs_g1_digest: sha(&g1),
@@ -65,11 +66,15 @@ fn operator() -> OperatorKey {
 fn issuer() -> IssuerKey {
     IssuerKey::from_slice(&[11; 32]).unwrap()
 }
+const IDENTITY: [u8; 32] = [12; 32];
 fn trust() -> ResponseTrust {
     ResponseTrust {
-        certificate_key: issuer().verifying_key().to_sec1_point(false).as_bytes()[1..]
-            .try_into()
-            .unwrap(),
+        certificate_keys: vec![czkp::issuer_keys::CertificateKeyPeriod {
+            public_key: issuer().verifying_key().to_sec1_point(false).as_bytes()[1..].to_vec(),
+            valid_from: 1,
+            valid_until: None,
+        }],
+        community_identity: IDENTITY,
         frontier: None,
     }
 }
@@ -122,6 +127,7 @@ fn response(
     );
     let state = czkp::certificate::AcceptedState {
         community: public.community,
+        identity: IDENTITY,
         owner: public.owner,
         state: public.next_state,
         scope: scope.circuit_digest,
@@ -391,7 +397,7 @@ fn a_failed_acknowledgement_leaves_an_accepted_account_that_settles_exactly_once
             (backend, store, owner)
         };
         let mut wrong = trust();
-        wrong.certificate_key[0] ^= 1;
+        wrong.community_identity = [13; 32];
         assert!(
             owner
                 .begin_activation(&engine(), &store, &wrong, 152)

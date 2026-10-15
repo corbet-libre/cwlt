@@ -1015,7 +1015,12 @@ impl Account {
 
     /// Reserve `units` voucher uses for a new link (action 15): the per-unit issue
     /// nullifiers of the presentation made at link creation count against these.
-    pub fn reserve_uses(&self, units: u64, now: u64, rng: &mut impl Entropy) -> Result<Candidate, Error> {
+    pub fn reserve_uses(
+        &self,
+        units: u64,
+        now: u64,
+        rng: &mut impl Entropy,
+    ) -> Result<Candidate, Error> {
         let mut input = self.input(rng.blind()?, now)?;
         input.action = 15;
         input.aux = AuxJson {
@@ -1026,7 +1031,12 @@ impl Account {
     }
 
     /// Release `units` reserved uses of an ended, revoked or declined link (action 16).
-    pub fn release_uses(&self, units: u64, now: u64, rng: &mut impl Entropy) -> Result<Candidate, Error> {
+    pub fn release_uses(
+        &self,
+        units: u64,
+        now: u64,
+        rng: &mut impl Entropy,
+    ) -> Result<Candidate, Error> {
         let mut input = self.input(rng.blind()?, now)?;
         input.action = 16;
         input.aux = AuxJson {

@@ -91,6 +91,10 @@ struct OutcomeStatement {
 #[serde(rename_all = "camelCase")]
 struct DepositStatement {
     community: Field,
+    identity: Field,
+    issuer_key: Vec<u8>,
+    issuer_valid_from: u64,
+    issuer_valid_until: u64,
     recipient: Field,
     release_epoch: u64,
     nullifier: Field,
@@ -143,12 +147,12 @@ struct RecordStatement {
 enum Body {
     Wave {
         policy: ExtensionStatement,
-        certificate_key: Field,
+        certificate_key: Vec<u8>,
         wave: WaveStatement,
     },
     Outcome {
         policy: ExtensionStatement,
-        certificate_key: Field,
+        certificate_key: Vec<u8>,
         outcome: OutcomeStatement,
     },
     Deposit {
@@ -165,7 +169,7 @@ enum Body {
 #[derive(Serialize)]
 struct WaveInput {
     extension: ExtensionJson,
-    issuer_key: Field,
+    issuer_key: Vec<u8>,
     scope: Field,
     community: Field,
     owner: Field,
@@ -205,9 +209,12 @@ struct OutcomeInput {
 #[derive(Serialize)]
 struct DepositInput {
     extension: ExtensionJson,
-    issuer_key: Field,
+    issuer_key: Vec<u8>,
+    issuer_valid_from: u64,
+    issuer_valid_until: u64,
     scope: Field,
     community: Field,
+    identity: Field,
     recipient: Field,
     release_epoch: u64,
     nullifier: Field,
@@ -326,7 +333,7 @@ impl Account {
         event: &Field,
         context: &WaveContext,
         scope: &Field,
-        issuer_key: &Field,
+        issuer_key: &[u8; 64],
         settled: Option<&Settled>,
     ) -> Result<Evidence, Error> {
         let code = settled.map_or(0, |s| s.outcome.code());
@@ -438,7 +445,7 @@ impl Account {
         });
         let input = WaveInput {
             extension: ext(self),
-            issuer_key: *issuer_key,
+            issuer_key: issuer_key.to_vec(),
             scope: *scope,
             community: self.cx.community,
             owner: self.owner().member,
@@ -468,12 +475,12 @@ impl Account {
         let body = match settled {
             None => Body::Wave {
                 policy,
-                certificate_key: *issuer_key,
+                certificate_key: issuer_key.to_vec(),
                 wave,
             },
             Some(s) => Body::Outcome {
                 policy,
-                certificate_key: *issuer_key,
+                certificate_key: issuer_key.to_vec(),
                 outcome: OutcomeStatement {
                     evidence: wave,
                     outcome: s.outcome,
@@ -488,15 +495,27 @@ impl Account {
         })
     }
 
-    /// The anonymous deposit of a burned delivery, released in `release_epoch`.
+    /// The anonymous deposit of a burned delivery, released in `release_epoch`. `issuer` is
+    /// the published ring period whose key signed the account's certificate; the relation
+    /// proves the hidden acceptance time lies inside it. `identity` is the community
+    /// identity the certificate binds.
     pub fn deposit(
         &self,
         delivery: &Delivery,
         scope: &Field,
-        issuer_key: &Field,
+        issuer: &czkp::issuer_keys::CertificateKeyPeriod,
+        identity: &Field,
         release_epoch: u64,
     ) -> Result<Evidence, Error> {
         let certificate = self.certificate.as_ref().ok_or(Error::Invalid)?;
+        let issuer_key = issuer.key().map_err(|_| Error::Invalid)?;
+        let (issuer_valid_from, issuer_valid_until) = (issuer.valid_from, issuer.until());
+        if issuer_valid_from == 0
+            || !(issuer_valid_from..issuer_valid_until).contains(&certificate.accepted_at)
+            || *identity == [0; 32]
+        {
+            return Err(Error::Invalid);
+        }
         let slot = &delivery.slot;
         let owner = self.owner().member;
         let event = self.marker(&owner, &slot.peer, &slot.nonce)?;
@@ -515,6 +534,10 @@ impl Account {
             policy: ExtensionStatement::from(&ext(self)),
             deposit: DepositStatement {
                 community: self.cx.community,
+                identity: *identity,
+                issuer_key: issuer_key.to_vec(),
+                issuer_valid_from,
+                issuer_valid_until,
                 recipient: slot.peer,
                 release_epoch,
                 nullifier: nullifier_value,
@@ -524,9 +547,12 @@ impl Account {
         };
         let input = DepositInput {
             extension: ext(self),
-            issuer_key: *issuer_key,
+            issuer_key: issuer_key.to_vec(),
+            issuer_valid_from,
+            issuer_valid_until,
             scope: *scope,
             community: self.cx.community,
+            identity: *identity,
             recipient: slot.peer,
             release_epoch,
             nullifier: nullifier_value,

@@ -43,7 +43,11 @@ pub struct WavePolicy {
     pub community: [u8; 32],
     pub extension: ExtensionPolicy,
     pub proof_scope: ProofScope,
-    pub certificate_key: Vec<u8>,
+    /// Every certificate issuer key with the period it signed in; a certificate is
+    /// judged by the key whose period holds its acceptance time.
+    pub certificate_keys: Vec<czkp::issuer_keys::CertificateKeyPeriod>,
+    /// The community identity (founding fingerprint) accepted-state certificates bind.
+    pub community_identity: [u8; 32],
     pub manifest_sha256: [u8; 32],
     pub state_policy: [u8; 32],
     pub valid_from: u64,
@@ -80,7 +84,8 @@ impl WavePolicy {
     }
     pub fn validate(&self) -> Result<(), Error> {
         self.extension.validate()?;
-        if self.certificate_key.len() != 64
+        czkp::issuer_keys::validate(&self.certificate_keys)?;
+        if self.community_identity == [0; 32]
             || self.manifest_sha256 == [0; 32]
             || self.proof_scope.circuit_digest == [0; 32]
             || self.proof_scope.verifying_key_digest == [0; 32]
@@ -506,25 +511,31 @@ impl<C: ProofCheck> WaveVerifier<C> {
 /// The issuer's accepted-state certificate is checked explicitly: the circuit
 /// only requires the bytes to be non-zero.
 fn check_certificate(policy: &WavePolicy, statement: &WaveStatement) -> Result<(), Error> {
-    let key: [u8; 64] = policy
-        .certificate_key
-        .as_slice()
-        .try_into()
-        .map_err(|_| Error::InvalidInput)?;
     let signature: [u8; 64] = statement
         .certificate
         .as_slice()
         .try_into()
         .map_err(|_| Error::InvalidInput)?;
+    czkp::issuer_keys::verify_accepted(
+        &policy.certificate_keys,
+        &accepted_state(policy, statement),
+        &signature,
+    )
+}
+
+fn accepted_state(
+    policy: &WavePolicy,
+    statement: &WaveStatement,
+) -> czkp::certificate::AcceptedState {
     czkp::certificate::AcceptedState {
         community: statement.context.community,
+        identity: policy.community_identity,
         owner: statement.context.owner,
         state: statement.state,
         scope: policy.proof_scope.circuit_digest,
         version: statement.version,
         accepted_at: statement.accepted_at,
     }
-    .verify(&key, &signature)
 }
 
 /// Ordered exactly as the public parameters of the Noir `wave` and `outcome`
@@ -547,7 +558,11 @@ fn public_fields(
     .map(scalar)
     .to_vec();
     push_bytes(&mut fields, &p.standing_policy_digest);
-    push_bytes(&mut fields, &policy.certificate_key);
+    // The relation takes the issuer key of the certificate's own acceptance time.
+    push_bytes(
+        &mut fields,
+        &czkp::issuer_keys::key_at(&policy.certificate_keys, statement.accepted_at)?,
+    );
     push_bytes(&mut fields, &policy.proof_scope.circuit_digest);
     for value in [&c.community, &c.owner, &c.peer] {
         push_bytes(&mut fields, value);
@@ -592,6 +607,16 @@ mod tests {
     use super::*;
     use czkp::ProofScope;
 
+    /// Uncompressed SEC1 encoding (prefix byte included) of a test issuer key.
+    fn test_key(seed: u8) -> Vec<u8> {
+        p256::ecdsa::SigningKey::from_bytes(&[seed; 32].into())
+            .unwrap()
+            .verifying_key()
+            .to_sec1_point(false)
+            .as_bytes()
+            .to_vec()
+    }
+
     fn policy() -> WavePolicy {
         WavePolicy {
             community: [1; 32],
@@ -607,7 +632,12 @@ mod tests {
                 circuit_digest: [2; 32],
                 verifying_key_digest: [3; 32],
             },
-            certificate_key: vec![4; 64],
+            certificate_keys: vec![czkp::issuer_keys::CertificateKeyPeriod {
+                public_key: test_key(4)[1..].to_vec(),
+                valid_from: 1,
+                valid_until: None,
+            }],
+            community_identity: [20; 32],
             manifest_sha256: [5; 32],
             state_policy: [6; 32],
             valid_from: 1,
@@ -708,7 +738,7 @@ mod tests {
         #[test]
         fn an_invalid_descriptor_is_refused_before_use() {
             let mut bad = descriptor();
-            bad["certificateKey"] = serde_json::to_value(vec![4u8; 63]).unwrap();
+            bad["certificateKeys"][0]["publicKey"] = serde_json::to_value(vec![4u8; 63]).unwrap();
             assert_eq!(
                 WavePolicy::from_balance(&balance(Some(bad)), NOW).err(),
                 Some(Error::InvalidInput)
@@ -826,21 +856,10 @@ mod tests {
     fn signed() -> (WavePolicy, WaveStatement) {
         use p256::ecdsa::{Signature, SigningKey, signature::Signer};
         let key = SigningKey::from_bytes(&[7; 32].into()).unwrap();
-        let point = key.verifying_key().to_sec1_point(false);
         let mut policy = policy();
-        policy.certificate_key = point.as_bytes()[1..].to_vec();
+        policy.certificate_keys[0].public_key = test_key(7)[1..].to_vec();
         let mut statement = statement();
-        let signature: Signature = key.sign(
-            &czkp::certificate::AcceptedState {
-                community: statement.context.community,
-                owner: statement.context.owner,
-                state: statement.state,
-                scope: policy.proof_scope.circuit_digest,
-                version: statement.version,
-                accepted_at: statement.accepted_at,
-            }
-            .bytes(),
-        );
+        let signature: Signature = key.sign(&accepted_state(&policy, &statement).bytes());
         statement.certificate = signature.to_bytes().to_vec();
         (policy, statement)
     }
@@ -920,5 +939,56 @@ mod tests {
         .unwrap();
         assert_eq!(done.outcome(), WaveOutcome::Answer);
         assert_eq!(ok.outcome.calls.get(), 1);
+    }
+
+    #[test]
+    fn certificates_are_judged_by_the_key_of_their_acceptance_time() {
+        use czkp::issuer_keys::CertificateKeyPeriod;
+        let (mut policy, s) = signed();
+        let signer = policy.certificate_keys[0].public_key.clone();
+        // The signing key retired at 200 after s.accepted_at = 120; a new key took over.
+        policy.certificate_keys = vec![
+            CertificateKeyPeriod {
+                public_key: signer.clone(),
+                valid_from: 1,
+                valid_until: Some(200),
+            },
+            CertificateKeyPeriod {
+                public_key: test_key(9)[1..].to_vec(),
+                valid_from: 200,
+                valid_until: None,
+            },
+        ];
+        policy.validate().unwrap();
+        assert_eq!(check_certificate(&policy, &s), Ok(()));
+        let fields = public_fields(&policy, &s, None).unwrap();
+        assert_eq!(
+            fields[37..101],
+            signer
+                .iter()
+                .map(|b| scalar(u64::from(*b)))
+                .collect::<Vec<_>>()[..]
+        );
+        // The same certificate claimed at a time outside its key's period fails.
+        let mut late = s.clone();
+        late.accepted_at = 250;
+        assert!(check_certificate(&policy, &late).is_err());
+        // A time before every period has no key at all.
+        policy.certificate_keys[0].valid_from = 130;
+        assert_eq!(check_certificate(&policy, &s), Err(Error::PolicyMismatch));
+        assert_eq!(
+            public_fields(&policy, &s, None).err(),
+            Some(Error::PolicyMismatch)
+        );
+    }
+
+    #[test]
+    fn a_certificate_for_another_community_identity_fails() {
+        let (mut policy, s) = signed();
+        assert_eq!(check_certificate(&policy, &s), Ok(()));
+        policy.community_identity = [21; 32];
+        assert_eq!(check_certificate(&policy, &s), Err(Error::Signature));
+        policy.community_identity = [0; 32];
+        assert_eq!(policy.validate(), Err(Error::InvalidInput));
     }
 }
