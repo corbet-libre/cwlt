@@ -1,7 +1,10 @@
 //! Parity with the former TypeScript builders: the golden vectors record every builder input and
 //! output of one scenario (generated once from cwlt c5259f4 `runtime/*.mts` and cblc
 //! `runtime/extensions/waves.mts` with deterministic blinds); the Rust builders must reproduce
-//! them exactly, refusals included.
+//! them exactly, refusals included. The TypeScript builders are gone since chain2; an intended
+//! witness format change re-records the expected values with `CWLT_WITNESS_BLESS=1` (the
+//! accept/refuse verdict of every step is never re-recorded), and the circuits themselves judge
+//! the new witnesses in the cblc proof jobs.
 use super::*;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -119,6 +122,15 @@ impl Entropy for Deterministic {
     }
 }
 
+/// Compare, or under `CWLT_WITNESS_BLESS` record `got` into `out`.
+fn check(bless: bool, out: &mut Value, label: &str, got: &impl serde::Serialize, want: &Value) {
+    if bless {
+        *out = serde_json::to_value(got).unwrap();
+    } else {
+        same(label, got, want);
+    }
+}
+
 fn same(label: &str, got: &impl serde::Serialize, want: &Value) {
     let got = canon(&serde_json::to_value(got).unwrap());
     let want = canon(want);
@@ -139,6 +151,8 @@ fn same(label: &str, got: &impl serde::Serialize, want: &Value) {
 #[test]
 fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
     let doc: Value = serde_json::from_slice(&std::fs::read(GOLDEN).unwrap()).unwrap();
+    let bless = std::env::var_os("CWLT_WITNESS_BLESS").is_some();
+    let mut blessed = doc.clone();
     let community: Field = bytes(&doc["community"]);
     let p = &doc["policy"];
     let policy = AccountPolicy {
@@ -234,6 +248,7 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
         let op = step["op"].as_str().unwrap();
         let who = step["who"].as_u64().map(|w| w as usize);
         let args = &step["args"];
+        let out = &mut blessed["steps"][n];
         let mut rng = Deterministic(drawn);
         drawn += step["draws"].as_u64().unwrap_or(0);
         let me = || accounts[who.unwrap()].as_ref().unwrap();
@@ -355,12 +370,16 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                             "step {n} {op}: Rust accepted what TypeScript refused"
                         );
                         built += 1;
-                        same(
+                        check(
+                            bless,
+                            &mut out["statement"],
                             &format!("step {n} {op} statement"),
                             &serde_json::from_str::<Value>(&e.statement_json().unwrap()).unwrap(),
                             &step["statement"],
                         );
-                        same(
+                        check(
+                            bless,
+                            &mut out["input"],
                             &format!("step {n} {op} input"),
                             &serde_json::from_str::<Value>(&e.input_json().unwrap()).unwrap(),
                             &step["input"],
@@ -393,16 +412,31 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                     "step {n} {op}: Rust accepted what TypeScript refused"
                 );
                 let input: Value = serde_json::from_str(&c.input.to_json().unwrap()).unwrap();
-                same(&format!("step {n} {op} input"), &input, &step["input"]);
-                same(
+                check(bless, &mut out["input"], &format!("step {n} {op} input"), &input, &step["input"]);
+                check(
+                    bless,
+                    &mut out["statement"],
                     &format!("step {n} {op} statement"),
                     &c.statement,
                     &step["statement"],
                 );
                 // The TypeScript genesis never produced the issuer-side effect description.
                 if !step["update"].is_null() {
-                    same(&format!("step {n} {op} update"), &c.update, &step["update"]);
+                    check(
+                        bless,
+                        &mut out["update"],
+                        &format!("step {n} {op} update"),
+                        &c.update,
+                        &step["update"],
+                    );
                 }
+                if bless {
+                    let hex: String = c.next.commitment.iter().map(|b| format!("{b:02x}")).collect();
+                    out["next"]["commitment"] = Value::String(hex);
+                    out["next"]["version"] = Value::String(c.next.version.to_string());
+                    out["next"]["reserved"] = Value::String(c.next.opening.reserved.to_string());
+                }
+                let want_next = if bless { out["next"].clone() } else { step["next"].clone() };
                 if let Some(e) = step.get("event").filter(|e| !e.is_null()) {
                     assert_eq!(c.event, Some(event(e)), "step {n} event");
                 }
@@ -416,7 +450,7 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                             .collect::<String>()
                     ))),
                     canon(&Value::String(
-                        step["next"]["commitment"]
+                        want_next["commitment"]
                             .as_str()
                             .map(|h| format!("0x{h}"))
                             .unwrap()
@@ -425,11 +459,11 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                 );
                 assert_eq!(
                     c.next.version.to_string(),
-                    step["next"]["version"].as_str().unwrap()
+                    want_next["version"].as_str().unwrap()
                 );
                 assert_eq!(
                     c.next.opening.reserved.to_string(),
-                    step["next"]["reserved"].as_str().unwrap()
+                    want_next["reserved"].as_str().unwrap()
                 );
                 if let (Some(d), Some(want)) =
                     (&c.delivery, step.get("delivery").filter(|d| !d.is_null()))
@@ -441,7 +475,7 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                     assert!(c.entry == Some(entry_of(want)), "step {n} bond entry");
                 }
                 if let Some(want) = step.get("tag").filter(|t| !t.is_null()) {
-                    same(&format!("step {n} tag"), &c.tag, want);
+                    check(bless, &mut out["tag"], &format!("step {n} tag"), &c.tag, want);
                 }
                 let who = who.unwrap();
                 let certificate = if op == "genesis" {
@@ -458,6 +492,9 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                 accounts[who] = Some(next);
             }
         }
+    }
+    if bless {
+        std::fs::write(GOLDEN, serde_json::to_vec(&blessed).unwrap()).unwrap();
     }
     let steps = doc["steps"].as_array().unwrap();
     assert_eq!(
