@@ -6,6 +6,8 @@ import {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput} from './hashes
 import {statementFromInput,publicInputValues,validityHorizon} from './statement.mjs';
 import {fieldBytes,fieldValue,limbs32} from '@corbet-labs/czkp/primitives';
 import {cat,be,sha,hex,zeros,random} from '@corbet-labs/czkp/encoding';
+/** Largest circuit integer; an open issuer period ends here. */
+const MAX_INTEGER=9007199254740991;
 export {accountHashes,IndexedMap,receiptBytes,ackBytes,noirInput};
 export {checkpointFromVerified} from './hashes.mjs';
 const bytes=v=>Uint8Array.from(v);
@@ -109,13 +111,19 @@ export class ExtensionWitness extends AccountWitness {
     input.own_map=changed.witness;if(s.role===0)next.outgoing=changed.next;else next.incoming=changed.next;
     next.slots.set(event.toString(),updated);return this.finish(next,input);
   }
-  async deposit({slot,kind},certificate,scope,issuerKey,releaseEpoch) {
+  // `issuance` = {publicKey, validFrom, validUntil?, identity}: the published ring period whose
+  // key signed the certificate (open period: validUntil absent) and the community identity.
+  async deposit({slot,kind},certificate,scope,issuance,releaseEpoch) {
+    const until=issuance.validUntil??MAX_INTEGER,at=Number(certificate.acceptedAt);
+    if(!(issuance.validFrom>0&&issuance.validFrom<=at&&at<until)||issuance.publicKey.length!==64||issuance.identity.length!==32)
+      throw new Error('the certificate lies outside the named issuer key period');
     const event=await this.hashes.marker(this.community,this.ownerSecret,this.owner.member,slot.peer,slot.nonce),stage=kind===4?1:0;
-    const deposit={community:Array.from(this.community),recipient:Array.from(slot.peer),releaseEpoch,
+    const deposit={community:Array.from(this.community),identity:Array.from(issuance.identity),issuerKey:Array.from(issuance.publicKey),
+      issuerValidFrom:issuance.validFrom,issuerValidUntil:until,recipient:Array.from(slot.peer),releaseEpoch,
       nullifier:Array.from(fieldBytes(await this.hashes.raw([event,41,stage,...limbs32(this.ownerSecret)]))),authorizationNullifier:Array.from(fieldBytes(await this.hashes.raw([event,40,stage,...limbs32(this.ownerSecret)]))),
       obligation:Array.from(fieldBytes(await this.hashes.delivery(this.community,slot.peer,this.owner.member,slot,kind)))};
-    return {statement:{kind:'deposit',policy:this.extension,deposit},input:{extension:extInput(this.extension),issuer_key:issuerKey,scope,
-      community:this.community,recipient:slot.peer,release_epoch:releaseEpoch,nullifier:deposit.nullifier,authorization_nullifier:deposit.authorizationNullifier,obligation:deposit.obligation,
+    return {statement:{kind:'deposit',policy:this.extension,deposit},input:{extension:extInput(this.extension),issuer_key:Array.from(issuance.publicKey),
+      issuer_valid_from:issuance.validFrom,issuer_valid_until:until,scope,community:this.community,identity:Array.from(issuance.identity),recipient:slot.peer,release_epoch:releaseEpoch,nullifier:deposit.nullifier,authorization_nullifier:deposit.authorizationNullifier,obligation:deposit.obligation,
       reporter:this.owner.member,secret:this.ownerSecret,state_policy:this.statePolicyHash,version:this.version,accepted_at:certificate.acceptedAt,state:fieldBytes(this.commitment),opening:extendedOpening(this.opening),certificate:certificate.signature,slot:slotInput(slot),kind}};
   }
   record(context) {
