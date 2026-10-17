@@ -38,6 +38,8 @@ pub enum Program {
     Wave,
     /// The peer-release settled outcome evidence.
     Outcome,
+    /// The per-epoch record (R2), proven once per epoch and cached.
+    RecordEpoch,
 }
 impl Program {
     /// The member name inside the circuit and key group JSON.
@@ -46,6 +48,7 @@ impl Program {
             Self::Update => "update",
             Self::Wave => "wave",
             Self::Outcome => "outcome",
+            Self::RecordEpoch => "record_epoch",
         }
     }
     /// Exact count of public fields of the compiled program.
@@ -54,6 +57,7 @@ impl Program {
             Self::Update => 410,
             Self::Wave => 618,
             Self::Outcome => 651,
+            Self::RecordEpoch => 335,
         }
     }
 }
@@ -217,6 +221,30 @@ impl NativeProver {
             return Err(Error::Crypto);
         }
         Ok(result)
+    }
+}
+
+impl NativeProver {
+    /// Prove one epoch's record and return the proof string a presentation carries: the
+    /// lower-hex JSON bundle `{"version":1,"proofs":[{"proof":"<hex>"}]}` relying parties
+    /// decode. Blocking; run it on a background worker. The record proves nothing until a
+    /// relying party verifies it against its own authenticated epoch descriptor.
+    pub fn prove_record_epoch(
+        &self,
+        evidence: &crate::account::RecordEpochEvidence,
+    ) -> Result<String, Error> {
+        if self.config.program != Program::RecordEpoch
+            || evidence.record().epoch.proof_scope != self.config.scope
+        {
+            return Err(Error::Invalid);
+        }
+        let input = evidence.input_json()?;
+        let public = abi::public_inputs(self.config.program, &self.abi, &input)?;
+        let proof = self.prove(input, public, Instant::now() + self.config.timeout)?;
+        let hex = data_encoding::HEXLOWER.encode(&proof.proof);
+        let bundle = serde_json::json!({"version": 1, "proofs": [{"proof": hex}]});
+        let bytes = serde_json::to_vec(&bundle).map_err(|_| Error::Invalid)?;
+        Ok(data_encoding::HEXLOWER.encode(&bytes))
     }
 }
 

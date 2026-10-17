@@ -26,9 +26,9 @@ pub use prepared::{Enrollment, GenesisContext, PreparedGenesis, VoucherBond};
 pub use witness::{
     Account, AccountStatement, Acknowledgment, BondEntry, Candidate, Certificate, Checkpoint,
     Delivered, Delivery, Effect, Entropy, Evidence, ExtensionStatement, Genesis,
-    MAX_ACCOUNT_SEALED, OsEntropy, PolicyStatement, RecordContext, RecordPurpose, Reserve,
-    Resolution, RosterRow, SealedAccount, Settled, SettledOutcome, Slot, UpdateEffect, UpdateInput,
-    WaveContext, verify_prehash,
+    MAX_ACCOUNT_SEALED, OsEntropy, PolicyStatement, RecordContext, RecordEpochEvidence,
+    RecordPurpose, Reserve, Resolution, RosterRow, SealedAccount, Settled, SettledOutcome, Slot,
+    UpdateEffect, UpdateInput, WaveContext, verify_prehash,
 };
 
 type Field = [u8; 32];

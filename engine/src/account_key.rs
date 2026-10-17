@@ -149,10 +149,7 @@ impl AccountKey {
         {
             return Err(Error::Crypto);
         }
-        let signature: Signature = self
-            .key
-            .sign_prehash(digest)
-            .map_err(|_| Error::Crypto)?;
+        let signature: Signature = self.key.sign_prehash(digest).map_err(|_| Error::Crypto)?;
         let signature = signature.normalize_s();
         signature
             .to_bytes()
@@ -241,9 +238,7 @@ mod tests {
         let signature = key.sign_prehash(&engine, &digest).unwrap();
         assert_eq!(signature, key.sign_prehash(&engine, &digest).unwrap());
         crate::account::verify_prehash(&public, &digest, &signature).unwrap();
-        assert!(
-            crate::account::verify_prehash(&public, &[8; 32], &signature).is_err()
-        );
+        assert!(crate::account::verify_prehash(&public, &[8; 32], &signature).is_err());
         let other = self::engine(6, 8, b"community");
         assert!(key.sign_prehash(&other, &digest).is_err());
     }

@@ -3,9 +3,9 @@
 //! signature against the enrollment row before it activates a reservation.
 use super::{Account, Acknowledgment, Checkpoint, Field, Reserve, Resolution};
 use crate::account::Enrollment;
-use std::sync::Arc;
 use crate::{Error, account::hashes};
 use p256::ecdsa::{Signature, VerifyingKey, signature::hazmat::PrehashVerifier};
+use std::sync::Arc;
 
 const PREFIX: &[u8] = b"cblc.contact.v1\0";
 const RECEIPT: &[u8] = b"cmsg.accounting-receipt.v1\0";
@@ -88,7 +88,11 @@ impl Account {
             .ok_or(Error::Invalid)?
             .clone();
         let owner = self.owner().clone();
-        Ok(if r.role == 0 { (owner, peer) } else { (peer, owner) })
+        Ok(if r.role == 0 {
+            (owner, peer)
+        } else {
+            (peer, owner)
+        })
     }
 
     /// The signed bytes of the recipient's receipt (the circuit's `receipt_bytes`).
@@ -198,8 +202,8 @@ pub fn verify_prehash(key: &[u8; 64], digest: &Field, signature: &[u8; 64]) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::account::{AccountPolicy, ExtensionPolicy, hashes};
     use crate::account::witness::{Genesis, RosterRow};
+    use crate::account::{AccountPolicy, ExtensionPolicy, hashes};
     use p256::ecdsa::{SigningKey, signature::hazmat::PrehashSigner};
 
     fn key(seed: u8) -> SigningKey {
@@ -306,7 +310,11 @@ mod tests {
         // A countersignature verifies for the counterpart only.
         let signature = sign(&recipient_key, &from_recipient);
         sender.verify_contact(&request(0, 1), &signature).unwrap();
-        assert!(recipient.verify_contact(&request(1, 0), &signature).is_err());
+        assert!(
+            recipient
+                .verify_contact(&request(1, 0), &signature)
+                .is_err()
+        );
         let own = sign(&sender_key, &from_sender);
         recipient.verify_contact(&request(1, 0), &own).unwrap();
         // Any changed term, a flipped bit and a high-S twin are refused.
@@ -317,9 +325,11 @@ mod tests {
         let parsed = Signature::from_slice(&signature).unwrap();
         let (r, s) = parsed.split_scalars();
         let high = Signature::from_scalars(r, -*s).unwrap();
-        assert!(sender
-            .verify_contact(&request(0, 1), &high.to_bytes().into())
-            .is_err());
+        assert!(
+            sender
+                .verify_contact(&request(0, 1), &high.to_bytes().into())
+                .is_err()
+        );
         // The lease must be named for either role.
         let mut open = request(0, 1);
         open.opened_at = None;
@@ -340,19 +350,41 @@ mod tests {
             signature: [0; 64],
         };
         let digest = recipient.resolution_digest(&r_event, &receipt).unwrap();
-        assert_eq!(digest, sender.resolution_digest(&s_event, &receipt).unwrap());
+        assert_eq!(
+            digest,
+            sender.resolution_digest(&s_event, &receipt).unwrap()
+        );
         receipt.signature = sign(&recipient_key, &digest);
         sender.verify_resolution(&s_event, &receipt).unwrap();
         recipient.verify_resolution(&r_event, &receipt).unwrap();
         let mut forged = receipt.clone();
         forged.history_digest = [9; 32];
         assert!(sender.verify_resolution(&s_event, &forged).is_err());
-        let ack_digest = sender.acknowledgment_digest(&s_event, &receipt, 61).unwrap();
-        assert_eq!(ack_digest, recipient.acknowledgment_digest(&r_event, &receipt, 61).unwrap());
-        let ack = Acknowledgment { issued_at: 61, signature: sign(&sender_key, &ack_digest) };
-        recipient.verify_acknowledgment(&r_event, &receipt, &ack).unwrap();
-        let late = Acknowledgment { issued_at: 62, ..ack.clone() };
-        assert!(recipient.verify_acknowledgment(&r_event, &receipt, &late).is_err());
+        let ack_digest = sender
+            .acknowledgment_digest(&s_event, &receipt, 61)
+            .unwrap();
+        assert_eq!(
+            ack_digest,
+            recipient
+                .acknowledgment_digest(&r_event, &receipt, 61)
+                .unwrap()
+        );
+        let ack = Acknowledgment {
+            issued_at: 61,
+            signature: sign(&sender_key, &ack_digest),
+        };
+        recipient
+            .verify_acknowledgment(&r_event, &receipt, &ack)
+            .unwrap();
+        let late = Acknowledgment {
+            issued_at: 62,
+            ..ack.clone()
+        };
+        assert!(
+            recipient
+                .verify_acknowledgment(&r_event, &receipt, &late)
+                .is_err()
+        );
         // A Close has no acknowledgment.
         let mut close = receipt.clone();
         close.kind = 2;
@@ -391,7 +423,10 @@ mod tests {
             );
             let ack = answer.then(|| {
                 let digest = sender.acknowledgment_digest(&s_req, &receipt, 50).unwrap();
-                Acknowledgment { issued_at: 50, signature: sign(&sender_key, &digest) }
+                Acknowledgment {
+                    issued_at: 50,
+                    signature: sign(&sender_key, &digest),
+                }
             });
             if let Some(ack) = &ack {
                 active.verify_acknowledgment(&r_req, &receipt, ack).unwrap();
@@ -407,7 +442,10 @@ mod tests {
             let evidence = settled
                 .wave_evidence(
                     &event,
-                    &crate::account::witness::WaveContext { history: [3; 32], challenge: [9; 32] },
+                    &crate::account::witness::WaveContext {
+                        history: [3; 32],
+                        challenge: [9; 32],
+                    },
                     &[2; 32],
                     &[6; 32],
                     Some(&crate::account::witness::Settled {

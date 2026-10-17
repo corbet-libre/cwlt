@@ -112,6 +112,24 @@ impl AcceptedAccount {
             })
             .with_checkpoint(roster)
     }
+
+    /// The record-epoch evidence of this accepted genesis state (see
+    /// `Account::record_epoch`). The record relation reads no roster, so the
+    /// witness keeps its own one-row genesis roster.
+    pub fn record_epoch(
+        &self,
+        received: &crate::ReceivedRecord,
+        presentation_key: [u8; 32],
+        now: u64,
+    ) -> Result<crate::account::witness::RecordEpochEvidence, Error> {
+        let context = &self.candidate.context;
+        let roster = std::sync::Arc::new(crate::account::witness::Checkpoint::from_rows(
+            context.enrollment_root,
+            vec![context.enrollment.clone()],
+        )?);
+        self.witness(roster)?
+            .record_epoch(received, presentation_key, now)
+    }
 }
 
 impl AcceptedGenesisProof {
