@@ -13,6 +13,8 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 
 [features]
+# The JSON-lines witness driver for the cblc proof jobs (example `witness_driver`); CI only.
+driver = []
 native-prover = ["dep:acvm", "dep:noirc_abi", "dep:noirc_artifacts", "dep:nargo", "dep:bn254_blackbox_solver", "dep:barretenberg-rs", "dep:rlimit", "dep:data-encoding", "dep:flate2"]
 
 [dependencies]
@@ -52,3 +54,7 @@ tempfile = "3"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[[example]]
+name = "witness_driver"
+required-features = ["driver"]

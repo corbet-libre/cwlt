@@ -9,6 +9,8 @@ mod opening;
 mod policy;
 mod prepared;
 mod witness;
+#[cfg(feature = "driver")]
+pub use witness::driver;
 
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use activation::{ActivationProof, ActivationRequest, prove_activation};

@@ -20,6 +20,8 @@ use zeroize::Zeroizing;
 
 mod builders;
 mod contact;
+#[cfg(feature = "driver")]
+pub mod driver;
 mod evidence;
 pub(crate) mod input;
 mod roster;
