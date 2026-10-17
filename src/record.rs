@@ -1,7 +1,8 @@
 //! Durable record cache. The internal engine owns secrets; Store owns the CAS.
 use ckmg::wallet_engine::{self, Engine, Sealed};
 use cwst::{Change, Store, backend::Backend};
-use czkp::record::{Context, Epoch, Presentation, Record};
+/// The public record types callers pass through this owner.
+pub use czkp::record::{Context, Epoch, Presentation, Record};
 
 const OWNER: &str = "cwlt.record";
 const KEY: &[u8] = b"epoch.v1";
