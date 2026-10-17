@@ -5,7 +5,7 @@
 use super::input::{ExtensionJson, Hx, OpeningJson};
 use super::{Account, Field};
 use crate::{Error, ReceivedRecord};
-use czkp::record::{Epoch, Leaf, Record};
+use czkp::record::{Epoch, Leaf, Record, SignedLeaf};
 use serde::Serialize;
 use zeroize::Zeroize;
 
@@ -79,6 +79,24 @@ impl Account {
             received.certificate(),
             presentation_key,
         )
+    }
+
+    /// The same evidence from a leaf the ledger signed for this state in `epoch` (a
+    /// descendant or join-time record leaf delivered with an acceptance, not a packet).
+    pub fn record_epoch_signed(
+        &self,
+        epoch: &Epoch,
+        signed: &SignedLeaf,
+        presentation_key: [u8; 32],
+        now: u64,
+    ) -> Result<RecordEpochEvidence, Error> {
+        epoch.check_time(now).map_err(|_| Error::Invalid)?;
+        let certificate: [u8; 64] = signed
+            .signature
+            .as_slice()
+            .try_into()
+            .map_err(|_| Error::Invalid)?;
+        self.record_epoch_leaf(epoch, &signed.leaf, &certificate, presentation_key)
     }
 
     /// The same evidence from an epoch, a leaf of this state and the issuer's certificate
@@ -360,5 +378,27 @@ mod tests {
                 Err(Error::Invalid)
             ));
         }
+    }
+
+    #[test]
+    fn a_signed_leaf_proves_only_inside_its_epoch_with_a_full_signature() {
+        let account = account();
+        let issuer = SigningKey::from_bytes(&[19; 32]);
+        let epoch = epoch(&issuer);
+        let leaf = leaf(&account);
+        let signed = czkp::record::SignedLeaf {
+            signature: certify(&issuer, &epoch, &leaf).to_vec(),
+            leaf,
+        };
+        let evidence = account
+            .record_epoch_signed(&epoch, &signed, [1; 32], 250)
+            .unwrap();
+        assert_eq!(evidence.record().certificate, signed.signature);
+        for now in [199, 300] {
+            assert!(account.record_epoch_signed(&epoch, &signed, [1; 32], now).is_err());
+        }
+        let mut short = signed.clone();
+        short.signature.pop();
+        assert!(account.record_epoch_signed(&epoch, &short, [1; 32], 250).is_err());
     }
 }
