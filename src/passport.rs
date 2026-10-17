@@ -133,6 +133,15 @@ impl PassportSession<'_> {
         self.0.cancel_stamp();
     }
 
+    /// The exact bytes of the pending stamp request when it carries every one of
+    /// `actions`; a device interrupted after sending sends them again.
+    pub fn pending_stamp_request(
+        &self,
+        actions: &[(StampScope, StampAction)],
+    ) -> Option<Vec<u8>> {
+        self.0.pending_stamp_request(actions)
+    }
+
     /// Whether an unexpired retained stamp approves `action` in `scope`.
     pub fn stamp_covers(&self, scope: &StampScope, action: &StampAction, now: Timestamp) -> bool {
         self.0.stamp_covers(scope, action, now)
