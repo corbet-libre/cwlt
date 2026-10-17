@@ -37,7 +37,7 @@ cwlt-engine = { path = "engine" }
 ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "main", default-features = false, features = ["wallet-engine"], optional = true }
 cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "main", optional = true }
 cbcn = { git = "https://git.corbet.ch/corbet-foss/cbcn.git", branch = "main", optional = true }
-czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "chain2" }
+czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main" }
 blake3 = { version = "1.8", optional = true }
 utoipa = { version = "6", optional = true }
 schemars = { version = "1", optional = true }
@@ -60,7 +60,7 @@ wasm-bindgen-test = "0.3"
 tempfile = "3"
 
 [dev-dependencies]
-czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "chain2", features = ["reference"] }
+czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main", features = ["reference"] }
 ed25519-dalek = "3.0"
 futures = { version = "0.3", features = ["executor"] }
 p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }
@@ -70,9 +70,3 @@ csgn = { git = "https://git.corbet.ch/corbet-foss/csgn", branch = "main", defaul
 # retain ordinary source instrumentation and no coverage exclusions.
 [profile.dev.package."*"]
 opt-level = 3
-
-# chain2 CI ONLY (removed before landing): the whole graph (cvfy included) builds czkp from its
-# chain2 branch. forge.corbet.ch is the same forge as git.corbet.ch; Cargo refuses a patch that
-# points at the patched source itself.
-[patch."https://git.corbet.ch/corbet-foss/czkp"]
-czkp = { git = "https://forge.corbet.ch/corbet-foss/czkp", branch = "chain2" }

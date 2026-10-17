@@ -19,7 +19,7 @@ native-prover = ["dep:acvm", "dep:noirc_abi", "dep:noirc_artifacts", "dep:nargo"
 
 [dependencies]
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
-czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "chain2" }
+czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main" }
 ed25519-dalek = { version = "3.0", features = ["zeroize"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 hpke = { version = "0.14", default-features = false, features = ["alloc", "x25519", "chacha"] }
@@ -46,7 +46,7 @@ path = "examples/account_worker.rs"
 required-features = ["native-prover"]
 
 [dev-dependencies]
-czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "chain2", features = ["reference"] }
+czkp = { git = "https://git.corbet.ch/corbet-foss/czkp", branch = "main", features = ["reference"] }
 rand_chacha = "0.10"
 rand_core = "0.10"
 sha2 = "0.11"
