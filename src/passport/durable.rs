@@ -310,6 +310,15 @@ impl DurableSession<'_> {
     ) -> std::result::Result<Presentation, cpsd::Error> {
         self.0.present(rng, expected, signed_request, now)
     }
+    /// The exact bytes of the committed pending stamp request when it carries every one of
+    /// `actions`; a device interrupted after sending sends them again and the wallet answers
+    /// with the same stamp.
+    pub fn pending_stamp_request(
+        &self,
+        actions: &[(StampScope, StampAction)],
+    ) -> Option<Vec<u8>> {
+        self.0.pending_stamp_request(actions)
+    }
     /// Whether an unexpired committed stamp approves `action` in `scope`.
     pub fn stamp_covers(&self, scope: &StampScope, action: &StampAction, now: Timestamp) -> bool {
         self.0.stamp_covers(scope, action, now)
