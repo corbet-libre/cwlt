@@ -57,6 +57,10 @@ impl AcceptedAccount {
     pub fn version(&self) -> u64 {
         self.candidate.genesis_public().next_version
     }
+    /// The community-scoped owner of this account (public; the record leaf's owner).
+    pub fn owner(&self) -> [u8; 32] {
+        self.candidate.context.enrollment.member
+    }
     /// Original operator acceptance time.
     pub fn accepted_at(&self) -> u64 {
         self.response.issuer.accepted_at
@@ -111,6 +115,40 @@ impl AcceptedAccount {
                 signature: self.response.certificate,
             })
             .with_checkpoint(roster)
+    }
+
+    /// The record-epoch evidence of this accepted genesis state (see
+    /// `Account::record_epoch`). The record relation reads no roster, so the
+    /// witness keeps its own one-row genesis roster.
+    pub fn record_epoch(
+        &self,
+        received: &crate::ReceivedRecord,
+        presentation_key: [u8; 32],
+        now: u64,
+    ) -> Result<crate::account::witness::RecordEpochEvidence, Error> {
+        self.own_witness()?
+            .record_epoch(received, presentation_key, now)
+    }
+
+    /// The record-epoch evidence from a leaf the ledger signed for this state.
+    pub fn record_epoch_signed(
+        &self,
+        epoch: &czkp::record::Epoch,
+        signed: &czkp::record::SignedLeaf,
+        presentation_key: [u8; 32],
+        now: u64,
+    ) -> Result<crate::account::witness::RecordEpochEvidence, Error> {
+        self.own_witness()?
+            .record_epoch_signed(epoch, signed, presentation_key, now)
+    }
+
+    fn own_witness(&self) -> Result<crate::account::witness::Account, Error> {
+        let context = &self.candidate.context;
+        let roster = std::sync::Arc::new(crate::account::witness::Checkpoint::from_rows(
+            context.enrollment_root,
+            vec![context.enrollment.clone()],
+        )?);
+        self.witness(roster)
     }
 }
 

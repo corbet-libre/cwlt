@@ -295,7 +295,7 @@ impl Drop for Evidence {
     }
 }
 
-fn ext(a: &Account) -> ExtensionJson {
+pub(super) fn ext(a: &Account) -> ExtensionJson {
     let e = &a.cx.extension;
     ExtensionJson {
         revision: e.revision,

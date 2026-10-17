@@ -146,6 +146,16 @@ impl ReceivedRecord {
         &self.epoch
     }
 
+    /// The private leaf, for the crate's own record-epoch witness builder only.
+    pub(crate) fn leaf(&self) -> &Leaf {
+        &self.leaf
+    }
+
+    /// The issuer's certificate over this leaf's blinded commitment.
+    pub(crate) fn certificate(&self) -> &[u8; CERTIFICATE] {
+        &self.certificate
+    }
+
     /// Recheck the exact independently authenticated descriptor/owner and time.
     /// Successful transport validation alone never proves private account state.
     pub fn check(&self, expected: &Epoch, owner: [u8; 32], now: u64) -> Result<(), Error> {
