@@ -402,6 +402,21 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
             }
             other => panic!("unknown op {other}"),
         };
+        // A fresh account: an unproven member has no voucher to hand out, an
+        // administrator and a root hold their role's allowance at once.
+        if let (Ok(candidate), "genesis") = (&result, op) {
+            let v = &standing.voucher;
+            assert_eq!(candidate.next.voucher_remaining(0, now).ok(), Some(0));
+            for role in [1u8, 2] {
+                let r = usize::from(role);
+                let remaining = candidate.next.voucher_remaining(role, now).ok().unwrap();
+                assert!(
+                    (v.min[r]..=v.max[r]).contains(&remaining),
+                    "role {role}: {remaining}"
+                );
+            }
+            assert!(candidate.next.voucher_remaining(3, now).is_err());
+        }
         match result {
             Err(_) => {
                 refused += 1;

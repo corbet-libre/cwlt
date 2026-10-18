@@ -142,6 +142,12 @@ impl AcceptedAccount {
             .record_epoch_signed(epoch, signed, presentation_key, now)
     }
 
+    /// Vouchers this accepted account may still hand out at `now` in the sponsor role
+    /// `role` (see `Account::voucher_remaining`).
+    pub fn voucher_remaining(&self, role: u8, now: u64) -> Result<u64, Error> {
+        self.own_witness()?.voucher_remaining(role, now)
+    }
+
     fn own_witness(&self) -> Result<crate::account::witness::Account, Error> {
         let context = &self.candidate.context;
         let roster = std::sync::Arc::new(crate::account::witness::Checkpoint::from_rows(

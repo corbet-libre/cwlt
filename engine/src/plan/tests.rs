@@ -133,3 +133,37 @@ fn a_reservation_needs_pool_headroom() {
     r.old.reserved = 3;
     assert!(r.prepare().is_err());
 }
+#[test]
+fn an_unproven_member_has_no_voucher_but_an_admin_has_the_role_minimum_at_once() {
+    let v = czkp::reference::params().voucher;
+    let mut r = request(15);
+    r.voucher_role = 0;
+    assert_eq!(r.voucher_remaining().ok(), Some(0));
+    r.voucher_role = 1;
+    let admin = r.voucher_remaining().ok().unwrap();
+    assert!(admin >= v.min[1] && admin <= v.max[1]);
+    r.voucher_role = 2;
+    let root = r.voucher_remaining().ok().unwrap();
+    assert!(root >= v.min[2] && root <= v.max[2]);
+    r.voucher_role = 3;
+    assert!(r.voucher_remaining().is_err());
+}
+#[test]
+fn the_remaining_vouchers_are_what_the_reserve_transition_allows() {
+    let mut r = request(15);
+    r.voucher_role = 1;
+    let remaining = r.voucher_remaining().ok().unwrap();
+    // Reserved and admitted vouchers count against the limit.
+    r.voucher.reserved = 1;
+    r.voucher.away = 1;
+    assert_eq!(r.voucher_remaining().ok(), Some(remaining - 2));
+    r.voucher = VoucherAccount::default();
+    r.units = remaining;
+    let reserved = r.prepare().ok().unwrap();
+    assert_eq!(reserved.voucher.reserved, remaining);
+    r.units = remaining + 1;
+    assert!(r.prepare().is_err());
+    // The reserved units leave nothing for another link.
+    r.voucher = reserved.voucher;
+    assert_eq!(r.voucher_remaining().ok(), Some(0));
+}

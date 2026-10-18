@@ -310,9 +310,22 @@ fn state(s: &Standing) -> State {
         joined: 0,
     }
 }
+fn account_of(v: &VoucherAccount) -> voucher::Account {
+    voucher::Account {
+        proven: v.proven,
+        away: v.away,
+        reserved: v.reserved,
+        lost: v.lost,
+        bonus: v.bonus,
+        returned: v.returned,
+        answers: v.answers,
+    }
+}
 impl Request {
-    pub fn prepare(&self) -> Result<Plan, Invalid> {
-        let mut b = self.old;
+    /// The checked inputs, the derived policy and the standing advanced to the proof
+    /// day with its pool cap: the common start of every transition and read.
+    fn advanced(&self) -> Result<(Policy, State, u64), Invalid> {
+        let b = self.old;
         let s = &self.standing;
         let joined = self.created_at / DAY;
         if self.role > 1
@@ -335,20 +348,30 @@ impl Request {
         st.joined = joined;
         st.advance(self.now / DAY, &policy);
         let cap = st.cap(&policy);
+        Ok((policy, st, cap))
+    }
+
+    /// Vouchers the account may still hand out at `now` in the sponsor role
+    /// `voucher_role` (czkp `voucher::remaining`, the limit less admitted and reserved
+    /// ones), with the same calendar advance and pool cap as a transition at `now`, so
+    /// a link creation that this allows is one the reserve transition (action 15) also
+    /// allows. A read: nothing changes.
+    pub fn voucher_remaining(&self) -> Result<u64, Invalid> {
+        let (policy, _, cap) = self.advanced()?;
+        voucher::remaining(&policy, self.voucher_role, &account_of(&self.voucher), cap)
+            .map_err(|_| Invalid)
+    }
+
+    pub fn prepare(&self) -> Result<Plan, Invalid> {
+        let mut b = self.old;
+        let joined = self.created_at / DAY;
+        let (policy, mut st, cap) = self.advanced()?;
         let mut phase = self.phase;
         let mut outcome = self.outcome;
         let mut authorization = 0;
         let mut answered = self.answered;
         let mut self_punished = self.self_punished;
-        let mut account = voucher::Account {
-            proven: self.voucher.proven,
-            away: self.voucher.away,
-            reserved: self.voucher.reserved,
-            lost: self.voucher.lost,
-            bonus: self.voucher.bonus,
-            returned: self.voucher.returned,
-            answers: self.voucher.answers,
-        };
+        let mut account = account_of(&self.voucher);
         let mut entry = voucher::Entry {
             limit: self.entry.limit,
             done: self.entry.done,

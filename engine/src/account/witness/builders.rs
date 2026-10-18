@@ -327,6 +327,23 @@ impl Account {
     }
 
     fn plan(&self, input: &UpdateInput) -> Result<plan::Plan, Error> {
+        self.request(input)?.prepare().map_err(|_| Error::Invalid)
+    }
+
+    /// Vouchers this account may still hand out at `now` in the sponsor role `role`
+    /// (member 0, admin 1, root 2): the committed voucher state with the standing
+    /// advanced to `now`, exactly as the reserve transition (action 15) at `now` would
+    /// see it. Reads only; a link the member creates must not ask for more uses.
+    pub fn voucher_remaining(&self, role: u8, now: u64) -> Result<u64, Error> {
+        let mut input = self.input([0; 32], self.at(now)?)?;
+        input.action = 15;
+        input.role = role;
+        self.request(&input)?
+            .voucher_remaining()
+            .map_err(|_| Error::Invalid)
+    }
+
+    fn request(&self, input: &UpdateInput) -> Result<plan::Request, Error> {
         let o = &self.opening;
         let s = &input.slot;
         let request = plan::Request {
@@ -383,7 +400,7 @@ impl Account {
                 rewards_seen: input.aux.entry.rewards_seen,
             },
         };
-        request.prepare().map_err(|_| Error::Invalid)
+        Ok(request)
     }
 
     fn set_slot(&mut self, event: Field, slot: Slot) {
