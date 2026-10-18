@@ -246,6 +246,71 @@ impl NativeProver {
         let bytes = serde_json::to_vec(&bundle).map_err(|_| Error::Invalid)?;
         Ok(data_encoding::HEXLOWER.encode(&bytes))
     }
+
+    /// Prepare the proof of one account update built from the witness (`Account::reserve`,
+    /// `activate`, `settle`, ...). Only a prover of the `update` member accepts it. The
+    /// returned job owns its private input (wiped on drop) and runs blocking, off the
+    /// caller's task, with [`PreparedProof::run`].
+    pub fn prepare_update(
+        &self,
+        input: &crate::account::UpdateInput,
+    ) -> Result<PreparedProof, Error> {
+        if self.config.program != Program::Update {
+            return Err(Error::Invalid);
+        }
+        let json = input.to_json()?;
+        let public = abi::public_inputs(self.config.program, &self.abi, &json)?;
+        Ok(PreparedProof {
+            prover: self.clone(),
+            input: json,
+            public,
+        })
+    }
+
+    /// Prepare the proof of one `wave` (reservation) or `outcome` (settled slot)
+    /// evidence; the counterpart checks it with its `WaveVerifier`. The prover's member
+    /// must match the evidence: `wave` for a reservation, `outcome` for a settled slot.
+    pub fn prepare_wave_evidence(
+        &self,
+        evidence: &crate::account::Evidence,
+    ) -> Result<PreparedProof, Error> {
+        let expected = if evidence.is_outcome() {
+            Program::Outcome
+        } else {
+            Program::Wave
+        };
+        if self.config.program != expected {
+            return Err(Error::Invalid);
+        }
+        let json = evidence.input_json()?;
+        let public = abi::public_inputs(self.config.program, &self.abi, &json)?;
+        Ok(PreparedProof {
+            prover: self.clone(),
+            input: json,
+            public,
+        })
+    }
+
+    /// The circuit member this prover runs.
+    pub fn program(&self) -> Program {
+        self.config.program
+    }
+}
+
+/// One prepared proof: the private circuit input (wiped when dropped) and its public
+/// fields, bound to the prover that checked them. It owns everything it needs, so the
+/// blocking [`run`](Self::run) can move to a worker thread.
+pub struct PreparedProof {
+    prover: NativeProver,
+    input: Zeroizing<String>,
+    public: Vec<[u8; 32]>,
+}
+impl PreparedProof {
+    /// Prove (blocking) and return the raw proof bytes.
+    pub fn run(self) -> Result<Vec<u8>, Error> {
+        let deadline = Instant::now() + self.prover.timeout();
+        Ok(self.prover.prove(self.input, self.public, deadline)?.proof)
+    }
 }
 
 #[derive(Serialize, Deserialize)]
