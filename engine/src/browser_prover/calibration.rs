@@ -24,8 +24,11 @@ pub const MAX_WINDOW_SECONDS: u64 = 3_600;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceClass {
+    /// A proof takes at most [`FAST_PERCENT`] of the window.
     Fast,
+    /// A proof takes at most [`OK_PERCENT`] of the window.
     Ok,
+    /// A proof takes at most [`SLOW_PERCENT`] of the window.
     Slow,
     /// The proof is predicted to overrun the window.
     TooSlow,
@@ -52,9 +55,13 @@ impl DeviceClass {
 /// window it was made against.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct Forecast {
+    /// The device class of the measurement.
     pub class: DeviceClass,
+    /// The measured proof time the prediction rests on.
     pub predicted_millis: u64,
+    /// The window the prediction was made against.
     pub window_seconds: u64,
+    /// Whether the proof is predicted to finish inside the window.
     pub fits: bool,
 }
 
