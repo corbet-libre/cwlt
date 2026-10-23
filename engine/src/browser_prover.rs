@@ -296,14 +296,17 @@ impl BrowserProver {
     /// matches them. It exists so the browser build can show, in a real browser, that the
     /// public-input derivation and the reply checks run on wasm32; the account paths use
     /// [`BrowserProver::prove`] through the prepared proof.
+    ///
+    /// Returns the proof's public inputs and its bytes.
     #[cfg(feature = "browser-prover-probe")]
     pub async fn probe_prove(
         &self,
         public_json: &str,
         input: Zeroizing<String>,
-    ) -> Result<Proof, Error> {
+    ) -> Result<(Vec<[u8; 32]>, Vec<u8>), Error> {
         let expected = self.public_inputs(public_json)?;
-        self.prove(input, expected).await
+        let proof = self.prove(input, expected).await?;
+        Ok((proof.public_inputs, proof.proof))
     }
 
     pub(crate) fn public_inputs(&self, input: &str) -> Result<Vec<[u8; 32]>, Error> {
