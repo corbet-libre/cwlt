@@ -339,7 +339,7 @@ async fn stamp_round_trip<B: Backend + Clone>(backend: B) {
         .issue_blind(&mut rng, &request, &challenge, 9, NOW)
         .unwrap();
     holder
-        .prepare_finish_stamp(&store, [4; 32], &mut rng, &blind, NOW)
+        .prepare_finish_stamp(&store, [4; 32], &mut rng, &blind, 9, NOW)
         .unwrap()
         .commit(&mut holder, &mut store, &[], &[])
         .await
@@ -384,4 +384,78 @@ async fn stamp_round_trip<B: Backend + Clone>(backend: B) {
 #[cfg_attr(not(target_arch = "wasm32"), test)]
 fn a_pending_stamp_and_its_stamp_survive_reopen() {
     futures::executor::block_on(stamp_round_trip(cwst::backend::Memory::new()));
+}
+
+/// X2 M1 at the durable wallet: the wallet's answer is signed under epoch 77, the
+/// authenticated global publication says 9. The stamp is refused, the attempt is consumed
+/// and nothing is retained.
+async fn stamp_under_another_epoch_is_refused<B: Backend + Clone>(backend: B) {
+    const NOW: Timestamp = 3_600_200;
+    let mut rng = StdRng::seed_from_u64(805);
+    let cipher = cipher();
+    let mut store = Store::create(backend, &cipher, "wallet-test").await.unwrap();
+    let mut holder = DurableHolder::create(initial(), &mut store, "wallet-test", [1; 32], &mut rng)
+        .await
+        .unwrap();
+    let params = cpsd::StampParams::new(86_400).unwrap();
+    let issuer =
+        cpsd::StampIssuerKey::generate(&mut rng, cpsd::KeyId::new("stamp").unwrap(), &params)
+            .unwrap();
+    let challenge = IssuanceChallenge::generate(&mut rng);
+    let scope = StampScope::new(
+        CommunityId::new(b"community").unwrap(),
+        CommunityFingerprint::from_bytes([3; 32]),
+    );
+    let action = StampAction::new(
+        ActionKind::new("device_join").unwrap(),
+        PayloadDigest::from_bytes([4; 32]),
+        StampSalt::from_bytes([5; 32]),
+    );
+    let request = holder
+        .prepare_begin_stamp(
+            &store,
+            [2; 32],
+            &mut rng,
+            issuer.public_key(),
+            &challenge,
+            &[(scope.clone(), action.clone())],
+            NOW,
+        )
+        .unwrap()
+        .commit(&mut holder, &mut store, &[], &[])
+        .await
+        .unwrap()
+        .unwrap();
+    let tagged = issuer
+        .issue_blind(&mut rng, &request, &challenge, 77, NOW)
+        .unwrap();
+    let refused = holder
+        .prepare_finish_stamp(&store, [4; 32], &mut rng, &tagged, 9, NOW)
+        .unwrap()
+        .commit(&mut holder, &mut store, &[], &[])
+        .await
+        .unwrap();
+    assert_eq!(refused.err(), Some(cpsd::Error::WrongEpoch));
+    assert!(
+        !holder
+            .session(&store)
+            .unwrap()
+            .stamp_covers(&scope, &action, NOW)
+    );
+    // The refused answer consumed the attempt: the same answer cannot be retried.
+    let again = holder
+        .prepare_finish_stamp(&store, [5; 32], &mut rng, &tagged, 77, NOW)
+        .unwrap()
+        .commit(&mut holder, &mut store, &[], &[])
+        .await
+        .unwrap();
+    assert_eq!(again.err(), Some(cpsd::Error::NoPendingIssuance));
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(target_arch = "wasm32"), test)]
+fn a_stamp_signed_under_another_epoch_than_the_published_one_is_refused() {
+    futures::executor::block_on(stamp_under_another_epoch_is_refused(
+        cwst::backend::Memory::new(),
+    ));
 }

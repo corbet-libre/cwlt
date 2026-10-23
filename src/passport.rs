@@ -123,9 +123,16 @@ impl PassportSession<'_> {
         self.0.begin_stamp(rng, issuer, challenge, actions, now)
     }
 
-    /// Retain only a signature-verified stamp; an invalid answer consumes the attempt.
-    pub fn finish_stamp(&mut self, blind: &BlindStamp, now: Timestamp) -> Result<(), Error> {
-        self.0.finish_stamp(blind, now)
+    /// Retain only a signature-verified stamp signed under `expected_epoch`, the stamp
+    /// epoch of the authenticated global publication (never one from the wallet's reply);
+    /// an invalid answer or another epoch consumes the attempt.
+    pub fn finish_stamp(
+        &mut self,
+        blind: &BlindStamp,
+        expected_epoch: u64,
+        now: Timestamp,
+    ) -> Result<(), Error> {
+        self.0.finish_stamp(blind, expected_epoch, now)
     }
 
     /// Drop a pending stamp request; retained stamps stay.

@@ -213,16 +213,19 @@ impl DurableHolder {
     }
 
     /// Stage the stamp finish, including a refused answer that consumes the attempt.
+    /// `expected_epoch` is the stamp epoch of the authenticated global publication; a
+    /// stamp signed under another epoch is refused with `WrongEpoch`.
     pub fn prepare_finish_stamp<B: Backend, R: rand::RngCore + rand::CryptoRng>(
         &self,
         store: &Store<B>,
         operation: [u8; 32],
         rng: &mut R,
         blind: &BlindStamp,
+        expected_epoch: u64,
         now: Timestamp,
     ) -> Result<Pending<std::result::Result<(), cpsd::Error>>> {
         self.prepare(store, operation, rng, |holder, _| {
-            holder.finish_stamp(blind, now)
+            holder.finish_stamp(blind, expected_epoch, now)
         })
     }
 
