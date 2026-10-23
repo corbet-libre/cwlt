@@ -3,10 +3,9 @@ use super::*;
 mod acceptance;
 pub use acceptance::AcceptedAccountGenesis;
 mod pending;
-use ckmg::wallet_engine::{
-    account::{GenesisProofScope, GenesisPublic, PreparedGenesisProof},
-    native_prover::NativeProver,
-};
+use ckmg::wallet_engine::account::{GenesisProofScope, GenesisPublic, PreparedGenesisProof};
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+use ckmg::wallet_engine::native_prover::NativeProver;
 pub use pending::{ActivatedAccount, PendingActivation, ReopenedPending};
 
 /// Original candidate and locally verified proof, without accepted custody.
@@ -35,6 +34,7 @@ impl AccountGenesis {
     /// Consume this private candidate into the bounded original native prover.
     /// Original Keys and remote authority must be checked by the custody layer
     /// before and after this call. Successful computation grants no acceptance.
+    #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
     pub fn prove<B: Backend>(
         self,
         owner: &DurableAccountOwner,

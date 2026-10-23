@@ -1,6 +1,6 @@
 //! Native member-side proving. Configuration is trusted runtime data, not a grant.
 //! Private inputs have no public constructor, serializer or callback boundary.
-use crate::Error;
+use crate::{Error, proof::Proof};
 use czkp::ProofScope;
 use noirc_abi::Abi;
 use serde::{Deserialize, Serialize};
@@ -313,13 +313,6 @@ impl PreparedProof {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Proof {
-    pub scope: ProofScope,
-    pub public_inputs: Vec<[u8; 32]>,
-    pub proof: Vec<u8>,
-}
 #[cfg(test)]
 pub(crate) fn update_key(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     program_key(bytes, Program::Update.key())

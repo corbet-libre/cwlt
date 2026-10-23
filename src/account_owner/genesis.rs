@@ -2,9 +2,7 @@
 use super::*;
 use ckmg::wallet_engine::account::{GenesisContext, PreparedGenesis};
 use std::cell::Cell;
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 mod proof;
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use proof::{
     AcceptedAccountGenesis, AccountGenesisProof, ActivatedAccount, GenesisRequestMaterial,
     PendingActivation, ReopenedPending,

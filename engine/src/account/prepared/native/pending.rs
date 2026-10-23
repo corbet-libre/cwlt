@@ -456,7 +456,7 @@ impl Engine {
         Ok((
             PreparedGenesisProof {
                 candidate,
-                proof: crate::native_prover::Proof {
+                proof: crate::proof::Proof {
                     scope,
                     public_inputs,
                     proof,
@@ -635,6 +635,6 @@ impl Engine {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native-prover", not(target_arch = "wasm32")))]
 #[path = "pending/tests.rs"]
 mod tests;

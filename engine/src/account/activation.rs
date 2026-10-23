@@ -4,7 +4,9 @@
 //! The account grants no authority: it is not enrolled anywhere and its secrets
 //! are discarded with this call.
 use super::{AccountPolicy, Enrollment, ExtensionPolicy, GenesisContext, GenesisPublic, hashes};
-use crate::{Engine, Error, native_prover::NativeProver};
+use crate::{Engine, Error};
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+use crate::native_prover::NativeProver;
 use czkp::poseidon::{integer, limbs};
 
 /// What the hub's terms name: the community and the exact policies to prove under.
@@ -33,6 +35,7 @@ pub struct ActivationProof {
 }
 
 /// Fictional but relation-consistent enrollment of one throwaway owner.
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 fn context(request: ActivationRequest, engine: &Engine) -> Result<GenesisContext, Error> {
     let mut operation = [0u8; 32];
     getrandom::fill(&mut operation).map_err(|_| Error::Crypto)?;
@@ -87,6 +90,7 @@ fn context(request: ActivationRequest, engine: &Engine) -> Result<GenesisContext
 }
 
 /// Prove the activation genesis with the bounded native prover.
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub fn prove_activation(
     prover: &NativeProver,
     request: ActivationRequest,
@@ -106,7 +110,7 @@ pub fn prove_activation(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native-prover", not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
 

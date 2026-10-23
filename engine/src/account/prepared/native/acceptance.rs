@@ -187,6 +187,6 @@ fn acceptance_digest(message: &[u8], signature: &[u8; 64]) -> Result<[u8; 32], E
     Ok(czkp::account::acceptance_digest(message, signature))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native-prover", not(target_arch = "wasm32")))]
 #[path = "acceptance/tests.rs"]
 mod tests;

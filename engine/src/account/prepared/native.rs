@@ -1,7 +1,12 @@
 //! Original typed genesis witness; private serialization stays inside this owner.
 use super::*;
-use crate::account::witness::{Account, Checkpoint, Genesis};
-use crate::native_prover::{NativeProver, Proof};
+use crate::proof::Proof;
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+use crate::{
+    account::witness::{Account, Checkpoint, Genesis},
+    native_prover::NativeProver,
+};
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 use std::time::Instant;
 mod acceptance;
 mod accepted;
@@ -14,7 +19,7 @@ pub use pending::{
     SealedPendingGenesis,
 };
 pub use response::{AcceptedResponse, AncestryResponse, Frontier, ResponseTrust};
-#[cfg(test)]
+#[cfg(all(test, feature = "native-prover", not(target_arch = "wasm32")))]
 mod tests;
 
 /// Locally verified proof data. It grants no enrollment, accepted Frontier, Keys
@@ -115,6 +120,7 @@ impl PreparedGenesis {
     /// Runtime supplies a real clock and freshly authorized Engine; no client
     /// JSON can select a prover path, policy, witness or timestamp. This still
     /// produces no accepted account or durable owner adoption.
+    #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
     pub fn prove(
         self,
         engine: &Engine,

@@ -13,6 +13,7 @@ pub mod account_key;
 pub mod native_prover;
 /// Checked integer planning of every account transition (shared by native and wasm holders).
 pub mod plan;
+mod proof;
 mod recipient;
 mod record;
 mod sealing;
@@ -85,7 +86,6 @@ impl Engine {
     }
 }
 
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use account::PreparedGenesisProof;
 pub use account::{
     AccountPolicy, Enrollment, ExtensionPolicy, GenesisContext, PreparedGenesis, VoucherBond,

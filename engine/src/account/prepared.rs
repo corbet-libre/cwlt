@@ -9,9 +9,7 @@ use crate::{Engine, Error, sealing};
 use std::{cell::Cell, sync::Arc};
 use zeroize::Zeroizing;
 
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 mod native;
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use native::{
     AcceptanceBinding, AcceptedAccount, AcceptedGenesisProof, AcceptedResponse, AncestryResponse,
     Frontier, GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, GenesisPublic, IssuerAcceptance,

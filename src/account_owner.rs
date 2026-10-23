@@ -12,7 +12,6 @@ mod initial;
 pub use initial::InitialAccountCheckpoint;
 mod genesis;
 pub use genesis::AccountGenesis;
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use genesis::{
     AcceptedAccountGenesis, AccountGenesisProof, ActivatedAccount, GenesisRequestMaterial,
     PendingActivation, ReopenedPending,

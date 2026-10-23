@@ -3,7 +3,7 @@
 use super::super::acceptance::acceptance_message;
 use super::*;
 use crate::account::hashes;
-use crate::native_prover::Proof;
+use crate::proof::Proof;
 use ed25519_dalek::{Signer as _, SigningKey as OperatorKey};
 use p256::ecdsa::SigningKey as IssuerKey;
 

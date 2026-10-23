@@ -99,7 +99,6 @@ impl AccountPolicy {
     }
 
     /// The policy fields as czkp's canonical statement encoder consumes them.
-    #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
     pub(super) fn fields(&self) -> czkp::account::PolicyFields {
         czkp::account::PolicyFields {
             initial_credit: self.initial_credit,
