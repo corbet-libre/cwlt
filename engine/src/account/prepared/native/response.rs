@@ -28,8 +28,9 @@ pub struct ResponseTrust {
     pub certificate_keys: Vec<czkp::issuer_keys::CertificateKeyPeriod>,
     /// The community identity (founding fingerprint) the certificates bind.
     pub community_identity: [u8; 32],
-    /// The still-valid frozen minimum frontier, when the material has one. Its
-    /// presence makes an ancestry certificate mandatory; its absence forbids one.
+    /// The still-valid frozen minimum frontier, when the material has one. An
+    /// ancestry certificate must match it, and without one none may come. A
+    /// genesis has no frozen leaf, so under a frontier its response may carry none.
     pub frontier: Option<Frontier>,
 }
 
@@ -55,7 +56,8 @@ pub struct AcceptedResponse {
     pub issuer: IssuerAcceptance,
     /// Issuer P-256 low-S signature of the accepted-state certificate.
     pub certificate: [u8; 64],
-    /// Epoch ancestry, present exactly when the material has a frontier.
+    /// Epoch ancestry of an owner whose state was frozen in the material's
+    /// frontier. A fresh genesis has no frozen leaf and carries none.
     pub ancestry: Option<AncestryResponse>,
 }
 
@@ -114,7 +116,13 @@ pub(super) fn verify_issuer_material(
     )
     .map_err(|_| Error::Crypto)?;
     match (&trust.frontier, &response.ancestry) {
-        (None, None) => Ok(()),
+        // The operator certifies ancestry only for an owner with a leaf in the
+        // frozen epoch; an account that starts after the freeze has none (cblc
+        // record_epoch::certify needs the owner's frozen lineage). This arm is
+        // reached ONLY from the genesis path (PreparedGenesisProof::
+        // verify_response is the sole caller). A later non-genesis caller must
+        // demand the ancestry under a frontier instead.
+        (_, None) => Ok(()),
         (Some(frontier), Some(ancestry)) => {
             if frontier.epoch == 0
                 || ancestry.epoch != frontier.epoch
@@ -131,8 +139,8 @@ pub(super) fn verify_issuer_material(
             )
             .map_err(|_| Error::Crypto)
         }
-        // A frontier makes ancestry mandatory; without one it must be absent.
-        _ => Err(Error::Invalid),
+        // Without a frontier no ancestry may come.
+        (None, Some(_)) => Err(Error::Invalid),
     }
 }
 

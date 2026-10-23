@@ -330,10 +330,12 @@ fn a_response_that_fails_any_check_never_advances_or_activates() {
     let mut bad = good.clone();
     bad.ancestry.as_mut().unwrap().frozen_leaf[0] ^= 1;
     assert!(advance(&bad, &live).is_err());
-    // The ancestry rule: mandatory with a frontier, forbidden without one.
-    let mut bad = good.clone();
-    bad.ancestry = None;
-    assert!(advance(&bad, &live).is_err());
+    // The ancestry rule: a present one must match the frontier and is forbidden
+    // without one. A genesis that started after the freeze has no frozen leaf:
+    // under a frontier its response carries no ancestry and still advances.
+    let mut fresh = good.clone();
+    fresh.ancestry = None;
+    assert!(advance(&fresh, &live).is_ok());
     assert!(advance(&good, &trust(None)).is_err());
     // Wrong frontier epoch or root, wrong issuer key.
     for changed in [
@@ -388,6 +390,34 @@ fn a_response_that_fails_any_check_never_advances_or_activates() {
             .is_err()
     );
     assert!(engine.activate_pending(&accepted, &live, 103).is_ok());
+}
+
+/// Row 16: a newcomer's genesis accepted after an epoch freeze. The operator
+/// certifies ancestry only for owners frozen in the epoch, so the response
+/// carries none; it advances and activates under the current frontier, also
+/// one that moved or ended meanwhile.
+#[test]
+fn a_genesis_after_the_freeze_carries_no_ancestry_and_activates_under_the_current_frontier() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let fresh = response(&proof, &a.acceptance, 150, false);
+    let live = trust(Some(frontier()));
+    let accepted = engine.advance_pending(&sent, &fresh, &live, 102).unwrap();
+    let moved = Frontier {
+        epoch: 4,
+        root: [9; 32],
+    };
+    for current in [live.clone(), trust(Some(moved)), trust(None)] {
+        assert_eq!(
+            engine
+                .activate_pending(&accepted, &current, 103)
+                .unwrap()
+                .accepted_at(),
+            150
+        );
+    }
 }
 
 #[test]
