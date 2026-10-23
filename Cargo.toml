@@ -33,7 +33,8 @@ native-verifier = ["wave", "dep:cvfy"]
 schema = ["wave", "dep:utoipa", "dep:schemars", "czkp/schema"]
 
 [dependencies]
-cwlt-engine = { path = "engine" }
+# Same git source as ckmg's engine (one selected package): .github/engine_identity.py proves its bytes equal engine/ and forbids a path edge.
+cwlt-engine = { git = "https://git.corbet.ch/corbet-foss/cwlt", branch = "main" }
 ckmg = { git = "https://git.corbet.ch/corbet-foss/ckmg.git", branch = "main", default-features = false, features = ["wallet-engine"], optional = true }
 cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "main", optional = true }
 cbcn = { git = "https://git.corbet.ch/corbet-foss/cbcn.git", branch = "main", optional = true }

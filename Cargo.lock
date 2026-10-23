@@ -1279,7 +1279,7 @@ dependencies = [
  "cpsd",
  "csgn",
  "cvfy",
- "cwlt-engine 0.0.0",
+ "cwlt-engine 0.0.0 (git+https://git.corbet.ch/corbet-foss/cwlt?branch=main)",
  "cwst",
  "czkp",
  "ed25519-dalek",
