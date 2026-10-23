@@ -51,7 +51,7 @@ fn main() {
         .map(|field| HEXLOWER.decode(field.as_bytes()).expect("public input"))
         .collect();
     let proof = HEXLOWER.decode(reply.proof.as_bytes()).expect("proof");
-    assert!(!proof.is_empty() && proof.len() % 32 == 0);
+    assert!(!proof.is_empty() && proof.len().is_multiple_of(32));
     let proof: Vec<Vec<u8>> = proof.chunks(32).map(<[u8]>::to_vec).collect();
     let g1 = read(&format!("{srs_dir}/g1.dat"));
     let g2 = read(&format!("{srs_dir}/g2.dat"));
