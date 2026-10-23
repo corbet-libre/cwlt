@@ -34,7 +34,7 @@ fn structure(names: &[(&str, AbiType)]) -> AbiType {
     }
 }
 
-pub(super) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
+pub(crate) fn expected() -> Vec<(&'static str, AbiType, AbiVisibility)> {
     let extension = structure(&[
         ("revision", uint(64)),
         ("quorum", uint(32)),
@@ -250,7 +250,7 @@ fn same(actual: &AbiType, expected: &AbiType) -> bool {
         _ => actual == expected,
     }
 }
-pub(super) fn check(program: super::Program, abi: &Abi) -> Result<(), Error> {
+pub(crate) fn check(program: super::Program, abi: &Abi) -> Result<(), Error> {
     if program != super::Program::Update {
         // The authenticated circuit digest binds the compiled program; the ABI check is the
         // exact public width and the absence of a return value.
@@ -315,7 +315,8 @@ fn flatten(value: &InputValue, typ: &AbiType, result: &mut Vec<[u8; 32]>) -> Res
     }
     Ok(())
 }
-pub(super) fn public_inputs(
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+pub(crate) fn public_inputs(
     program: super::Program,
     abi: &Abi,
     json: &str,
@@ -342,7 +343,7 @@ pub(super) fn public_inputs(
     Ok(public)
 }
 
-pub(super) fn public_only(
+pub(crate) fn public_only(
     program: super::Program,
     abi: &Abi,
     json: &str,

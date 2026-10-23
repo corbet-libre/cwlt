@@ -1,11 +1,10 @@
 //! Original typed genesis witness; private serialization stays inside this owner.
 use super::*;
 use crate::proof::Proof;
+#[cfg(feature = "prover-core")]
+use crate::account::witness::{Account, Checkpoint, Genesis};
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
-use crate::{
-    account::witness::{Account, Checkpoint, Genesis},
-    native_prover::NativeProver,
-};
+use crate::native_prover::NativeProver;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 use std::time::Instant;
 mod acceptance;
@@ -116,22 +115,13 @@ impl PreparedGenesisProof {
     }
 }
 impl PreparedGenesis {
-    /// Consume this private candidate into the owned original native prover.
-    /// Runtime supplies a real clock and freshly authorized Engine; no client
-    /// JSON can select a prover path, policy, witness or timestamp. This still
-    /// produces no accepted account or durable owner adoption.
-    #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
-    pub fn prove(
-        self,
-        engine: &Engine,
-        prover: &NativeProver,
-        mut clock: impl FnMut() -> Result<u64, Error>,
-    ) -> Result<PreparedGenesisProof, Error> {
-        let deadline = Instant::now() + prover.timeout();
-        let now = clock()?;
-        self.check_context(engine, &self.context, now)?;
+    /// The one builder of the update input for any prover: genesis is its first transition.
+    /// Returns the public part (what the expected public inputs derive from) and the private
+    /// input. Runtime has already checked the context; the opening never leaves this owner
+    /// except inside the returned input, which the caller hands to exactly one prover.
+    #[cfg(feature = "prover-core")]
+    pub(crate) fn proof_input(&self) -> Result<(String, zeroize::Zeroizing<String>), Error> {
         let context = &self.context;
-        // The one builder of the update input; genesis is its first transition.
         let checkpoint = std::sync::Arc::new(Checkpoint::from_rows(
             context.enrollment_root,
             vec![context.enrollment.clone()],
@@ -154,10 +144,48 @@ impl PreparedGenesis {
         if built.next.state() != self.commitment {
             return Err(Error::Invalid);
         }
-        let public_json = built.input.public_json()?;
+        Ok((built.input.public_json()?, built.input.to_json()?))
+    }
+
+    /// Consume this private candidate into the owned original native prover.
+    /// Runtime supplies a real clock and freshly authorized Engine; no client
+    /// JSON can select a prover path, policy, witness or timestamp. This still
+    /// produces no accepted account or durable owner adoption.
+    #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+    pub fn prove(
+        self,
+        engine: &Engine,
+        prover: &NativeProver,
+        mut clock: impl FnMut() -> Result<u64, Error>,
+    ) -> Result<PreparedGenesisProof, Error> {
+        let deadline = Instant::now() + prover.timeout();
+        let now = clock()?;
+        self.check_context(engine, &self.context, now)?;
+        let (public_json, input) = self.proof_input()?;
         let expected = prover.public_inputs(&public_json)?;
-        let input = built.input.to_json()?;
         let proof = prover.prove(input, expected, deadline)?;
+        self.check_context(engine, &self.context, clock()?)?;
+        Ok(PreparedGenesisProof {
+            candidate: self,
+            proof,
+        })
+    }
+
+    /// The same proof on the browser prover: the private input goes to the Web Worker behind
+    /// the port and only the proof comes back, checked against the public inputs this engine
+    /// derived itself. The context is checked before the input is built and again after.
+    #[cfg(feature = "browser-prover")]
+    pub async fn prove_browser(
+        self,
+        engine: &Engine,
+        prover: &crate::browser_prover::BrowserProver,
+        mut clock: impl FnMut() -> Result<u64, Error>,
+    ) -> Result<PreparedGenesisProof, Error> {
+        let now = clock()?;
+        self.check_context(engine, &self.context, now)?;
+        let (public_json, input) = self.proof_input()?;
+        let expected = prover.public_inputs(&public_json)?;
+        let proof = prover.prove(input, expected).await?;
         self.check_context(engine, &self.context, clock()?)?;
         Ok(PreparedGenesisProof {
             candidate: self,

@@ -12,6 +12,8 @@ mod witness;
 pub use witness::driver;
 
 pub use activation::{ActivationProof, ActivationRequest};
+#[cfg(feature = "browser-prover")]
+pub use activation::prove_activation_browser;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use activation::prove_activation;
 pub use czkp::ProofScope as GenesisProofScope;

@@ -35,7 +35,10 @@ pub struct ActivationProof {
 }
 
 /// Fictional but relation-consistent enrollment of one throwaway owner.
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+#[cfg(any(
+    all(feature = "native-prover", not(target_arch = "wasm32")),
+    feature = "browser-prover"
+))]
 fn context(request: ActivationRequest, engine: &Engine) -> Result<GenesisContext, Error> {
     let mut operation = [0u8; 32];
     getrandom::fill(&mut operation).map_err(|_| Error::Crypto)?;
@@ -104,6 +107,29 @@ pub fn prove_activation(
     let engine = Engine::from_seed_and_sealing_key(&mut seed, &mut sealing, scope.as_bytes())?;
     let candidate = engine.prepare_genesis(context(request, &engine)?)?;
     let proven = candidate.prove(&engine, prover, || Ok(checked_at))?;
+    Ok(ActivationProof {
+        public: proven.public_genesis(),
+        proof: proven.proof().to_vec(),
+    })
+}
+
+/// The same activation proof on the browser prover.
+#[cfg(feature = "browser-prover")]
+pub async fn prove_activation_browser(
+    prover: &crate::browser_prover::BrowserProver,
+    request: ActivationRequest,
+) -> Result<ActivationProof, Error> {
+    let mut seed = [0u8; 32];
+    let mut sealing = [0u8; 32];
+    getrandom::fill(&mut seed).map_err(|_| Error::Crypto)?;
+    getrandom::fill(&mut sealing).map_err(|_| Error::Crypto)?;
+    let checked_at = request.checked_at;
+    let scope = request.community_id.clone();
+    let engine = Engine::from_seed_and_sealing_key(&mut seed, &mut sealing, scope.as_bytes())?;
+    let candidate = engine.prepare_genesis(context(request, &engine)?)?;
+    let proven = candidate
+        .prove_browser(&engine, prover, || Ok(checked_at))
+        .await?;
     Ok(ActivationProof {
         public: proven.public_genesis(),
         proof: proven.proof().to_vec(),

@@ -11,9 +11,15 @@ pub mod account_key;
 /// Native private witness execution over the maintained original Noir/BB owners.
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub mod native_prover;
+/// The engine side of the browser prover: material checks, expected public inputs and the
+/// `ProofWorker` port a Web Worker answers behind.
+#[cfg(feature = "browser-prover")]
+pub mod browser_prover;
 /// Checked integer planning of every account transition (shared by native and wasm holders).
 pub mod plan;
 mod proof;
+#[cfg(feature = "prover-core")]
+mod prover_shared;
 mod recipient;
 mod record;
 mod sealing;

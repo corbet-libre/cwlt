@@ -3,7 +3,6 @@
 use crate::{Error, proof::Proof};
 use czkp::ProofScope;
 use noirc_abi::Abi;
-use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     sync::{
@@ -13,54 +12,20 @@ use std::{
     time::{Duration, Instant},
 };
 use zeroize::Zeroizing;
-mod abi;
 mod compression;
 #[cfg(test)]
 pub(crate) mod tests;
 mod transport;
 mod worker;
 
-pub(crate) const MAX_CIRCUIT: usize = 64 * 1024 * 1024;
+// The ABI, the program table, the bounds and the group checks are shared with the browser prover.
+pub use crate::prover_shared::Program;
+use crate::prover_shared::{MAX_CIRCUIT, MAX_PROOF, abi, check_groups, program_key, sha};
+
 pub(crate) const MAX_SETUP: usize = 128 * 1024 * 1024;
 // Original extension artifact contract bounds the complete shared setup at 128 MiB.
 pub(crate) const MAX_POINTS: u32 = (MAX_SETUP / 32) as u32;
 pub(crate) const MAX_FRAME: usize = (MAX_CIRCUIT + MAX_SETUP) * 4 + 2 * 1024 * 1024;
-pub(crate) const MAX_PROOF: usize = 1024 * 1024;
-
-/// The circuit of a group this prover proves. The authenticated circuit digest
-/// already binds the group; the program only selects which member is run.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Program {
-    /// The account update (and genesis) relation.
-    Update,
-    /// The peer-release reservation evidence.
-    Wave,
-    /// The peer-release settled outcome evidence.
-    Outcome,
-    /// The per-epoch record (R2), proven once per epoch and cached.
-    RecordEpoch,
-}
-impl Program {
-    /// The member name inside the circuit and key group JSON.
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Update => "update",
-            Self::Wave => "wave",
-            Self::Outcome => "outcome",
-            Self::RecordEpoch => "record_epoch",
-        }
-    }
-    /// Exact count of public fields of the compiled program.
-    pub const fn publics(self) -> usize {
-        match self {
-            Self::Update => 410,
-            Self::Wave => 618,
-            Self::Outcome => 651,
-            Self::RecordEpoch => 335,
-        }
-    }
-}
 
 /// Explicit immutable original policy material and resource bounds. The host
 /// authenticates it from current owners; callers cannot choose it via request JSON.
@@ -129,13 +94,6 @@ impl NativeProver {
     pub fn new(config: NativeProverConfig) -> Result<Self, Error> {
         if !config.executable.is_absolute()
             || config.executable_digest == [0; 32]
-            || config.scope.circuit_digest == [0; 32]
-            || config.circuit.is_empty()
-            || config.circuit.len() > MAX_CIRCUIT
-            || sha(&config.circuit)? != config.scope.circuit_digest
-            || config.verification_key.is_empty()
-            || config.verification_key.len() > MAX_PROOF
-            || sha(&config.verification_key)? != config.scope.verifying_key_digest
             || config.num_points == 0
             || config.num_points > MAX_POINTS
             || config.srs_g1.len() > MAX_SETUP
@@ -151,23 +109,12 @@ impl NativeProver {
         {
             return Err(Error::Invalid);
         }
-        #[derive(Deserialize)]
-        struct Header {
-            noir_version: String,
-            abi: Abi,
-        }
-        let mut group: std::collections::BTreeMap<String, serde_json::Value> =
-            serde_json::from_slice(&config.circuit).map_err(|_| Error::Invalid)?;
-        let header: Header =
-            serde_json::from_value(group.remove(config.program.key()).ok_or(Error::Invalid)?)
-                .map_err(|_| Error::Invalid)?;
-        program_key(&config.verification_key, config.program.key())?;
-        if header.noir_version != "1.0.0-beta.26"
-            && !header.noir_version.starts_with("1.0.0-beta.26+")
-        {
-            return Err(Error::Invalid);
-        }
-        abi::check(config.program, &header.abi)?;
+        let header = check_groups(
+            config.program,
+            &config.scope,
+            &config.circuit,
+            &config.verification_key,
+        )?;
         Ok(Self {
             config: Arc::new(config),
             abi: Arc::new(header.abi),
@@ -316,21 +263,6 @@ impl PreparedProof {
 #[cfg(test)]
 pub(crate) fn update_key(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     program_key(bytes, Program::Update.key())
-}
-pub(crate) fn program_key(bytes: &[u8], name: &str) -> Result<Vec<u8>, Error> {
-    let mut group: std::collections::BTreeMap<String, String> =
-        serde_json::from_slice(bytes).map_err(|_| Error::Invalid)?;
-    let key = data_encoding::HEXLOWER
-        .decode(group.remove(name).ok_or(Error::Invalid)?.as_bytes())
-        .map_err(|_| Error::Invalid)?;
-    if key.is_empty() || key.len() > MAX_PROOF {
-        return Err(Error::Invalid);
-    }
-    Ok(key)
-}
-
-pub(crate) fn sha(bytes: &[u8]) -> Result<[u8; 32], Error> {
-    czkp::decode(&czkp::digest(bytes)).map_err(|_| Error::Crypto)
 }
 
 /// Fixed nonsecret failure stage of the dedicated owned worker. It contains no

@@ -57,6 +57,36 @@ impl AccountGenesis {
     }
 }
 
+impl AccountGenesis {
+    /// The same proof on the browser prover: the private input goes to the Web Worker behind
+    /// the port and only a checked proof comes back. The same custody checks run before and
+    /// after; successful computation grants no acceptance.
+    #[cfg(feature = "browser-prover")]
+    pub async fn prove_browser<B: Backend>(
+        self,
+        owner: &DurableAccountOwner,
+        fresh_engine: &Engine,
+        store: &Store<B>,
+        prover: &ckmg::wallet_engine::browser_prover::BrowserProver,
+        mut clock: impl FnMut() -> Result<u64, ckmg::wallet_engine::Error>,
+    ) -> Result<AccountGenesisProof, Error> {
+        self.check_current(owner, fresh_engine, store, &self.context, clock()?)?;
+        let candidate = self
+            .candidate
+            .prove_browser(&self.engine, prover, &mut clock)
+            .await?;
+        let proven = AccountGenesisProof {
+            engine: self.engine,
+            candidate,
+            context: self.context,
+            sealed: self.sealed,
+            failed: Cell::new(false),
+        };
+        proven.check_current(owner, fresh_engine, store, &proven.context, clock()?)?;
+        Ok(proven)
+    }
+}
+
 impl AccountGenesisProof {
     /// Irreversibly fence this RAM owner after custody cancellation or refusal.
     pub fn invalidate(&self) {
