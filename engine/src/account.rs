@@ -20,9 +20,9 @@ pub use policy::{AccountPolicy, ExtensionPolicy};
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use prepared::{
     AcceptanceBinding, AcceptedAccount, AcceptedGenesisProof, AcceptedResponse, AncestryResponse,
-    Frontier, GenesisPublic, IssuerAcceptance, MAX_ACCEPTED_SEALED, MAX_PENDING_SEALED,
-    PendingGenesisBinding, PreparedGenesisProof, ResponseTrust, SealedAcceptedAccount,
-    SealedPendingGenesis,
+    Frontier, GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, GenesisPublic, IssuerAcceptance,
+    MAX_ACCEPTED_SEALED, MAX_PENDING_SEALED, OwnerAbsence, PendingGenesisBinding,
+    PreparedGenesisProof, ResponseTrust, SealedAcceptedAccount, SealedPendingGenesis,
 };
 pub use prepared::{Enrollment, GenesisContext, PreparedGenesis, VoucherBond};
 pub use witness::{

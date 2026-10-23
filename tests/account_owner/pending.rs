@@ -5,8 +5,9 @@ use super::genesis::context;
 use super::*;
 use ckmg::wallet_engine::{
     account::{
-        AcceptanceBinding, AcceptedResponse, GenesisProofScope, GenesisPublic, IssuerAcceptance,
-        PendingGenesisBinding, ResponseTrust,
+        AcceptanceBinding, AcceptedResponse, GENESIS_DISCARD_COMMIT_MARGIN_SECONDS,
+        GenesisProofScope, GenesisPublic, IssuerAcceptance, OwnerAbsence, PendingGenesisBinding,
+        ResponseTrust,
     },
     native_prover::{NativeProver, NativeProverConfig, Program},
 };
@@ -517,5 +518,164 @@ fn activation_commits_once_and_a_stale_pending_row_is_refused() {
         );
         assert!(owner.settle_outbox(&mut store, [52; 32]).await.unwrap());
         assert!(store.load_pending().unwrap().is_empty());
+    });
+}
+
+/// An operator-signed owner-lookup status reporting no account at `observed_at`,
+/// in the Balance wire formats.
+fn absence(public: &GenesisPublic, observed_at: u64, key: &OperatorKey) -> OwnerAbsence {
+    let device = OperatorKey::from_bytes(&[9; 32]);
+    let (issued_at, expires_at) = (observed_at - 10, observed_at + 90);
+    let mut request = b"cfrm.account.status.v1\0".to_vec();
+    request.extend_from_slice(&public.community);
+    request.extend_from_slice(&public.owner);
+    request.push(0);
+    request.extend_from_slice(&[0; 32]);
+    request.extend_from_slice(&[3; 32]);
+    request.extend_from_slice(&device.verifying_key().to_bytes());
+    request.extend_from_slice(&issued_at.to_be_bytes());
+    request.extend_from_slice(&expires_at.to_be_bytes());
+    let request_signature = device.sign(&request).to_bytes();
+    let mut response = b"cfrm.account.status-response.v1\0".to_vec();
+    response.extend_from_slice(&czkp::account::acceptance_digest(&request, &request_signature));
+    response.extend_from_slice(&observed_at.to_be_bytes());
+    response.push(0);
+    response.extend_from_slice(&[0; 32]);
+    OwnerAbsence {
+        community: public.community,
+        owner: public.owner,
+        challenge: [3; 32],
+        chat_public_key: device.verifying_key().to_bytes(),
+        issued_at,
+        expires_at,
+        request_signature,
+        observed_at,
+        signature: key.sign(&response).to_bytes(),
+    }
+}
+
+#[test]
+fn an_elapsed_state_a_is_discarded_in_one_commit_that_keeps_its_request_digest() {
+    block_on(async {
+        let mut staged = proven().await;
+        staged.stage().await;
+        let context = context(&staged.owner, &staged.store);
+        let public = staged
+            .proof
+            .request_material(&staged.owner, &engine(), &staged.store, &context, 101)
+            .unwrap()
+            .statement;
+        // The request expired at 150; only operator times decide.
+        let expires = 150;
+        let due = expires + GENESIS_DISCARD_COMMIT_MARGIN_SECONDS;
+        let good = absence(&public, due, &operator());
+        let early = absence(&public, due - 1, &operator());
+        let foreign = absence(&public, due, &OperatorKey::from_bytes(&[6; 32]));
+        let writes = staged.backend.writes.get();
+        for (absence, operation, acknowledgement) in [
+            (&early, [60; 32], [61; 32]),
+            (&foreign, [60; 32], [61; 32]),
+            (&good, [0; 32], [61; 32]),
+            (&good, [60; 32], [60; 32]),
+        ] {
+            assert!(
+                staged
+                    .owner
+                    .discard_elapsed_pending(
+                        &engine(),
+                        &mut staged.store,
+                        expires,
+                        absence,
+                        operation,
+                        acknowledgement,
+                    )
+                    .await
+                    .is_err()
+            );
+        }
+        assert_eq!(staged.backend.writes.get(), writes, "refusals write nothing");
+        assert!(staged.owner.discarded_genesis(&staged.store).unwrap().is_empty());
+        let digest = staged
+            .owner
+            .discard_elapsed_pending(&engine(), &mut staged.store, expires, &good, [60; 32], [61; 32])
+            .await
+            .unwrap();
+        assert_eq!(digest, [0xB2; 32]);
+        // Exactly the pending row went; the digest stays, the outbox is acknowledged.
+        assert!(staged.owner.reopen_pending(&engine(), &staged.store, 102).is_err());
+        assert_eq!(
+            staged.owner.discarded_genesis(&staged.store).unwrap(),
+            vec![[0xB2; 32]]
+        );
+        assert!(staged.store.load_pending().unwrap().is_empty());
+        let (_, mut store, owner) = staged.crash().await;
+        assert_eq!(owner.discarded_genesis(&store).unwrap(), vec![[0xB2; 32]]);
+        // Nothing is left to discard, and settling again is a no-op.
+        assert!(
+            owner
+                .discard_elapsed_pending(&engine(), &mut store, expires, &good, [62; 32], [63; 32])
+                .await
+                .is_err()
+        );
+        owner.settle_discarded(&mut store, [64; 32]).await.unwrap();
+    });
+}
+
+#[test]
+fn an_accepted_state_is_never_discarded_and_a_fresh_request_stages_after_a_discard() {
+    block_on(async {
+        let mut staged = proven().await;
+        staged.stage().await;
+        let context = context(&staged.owner, &staged.store);
+        let public = staged
+            .proof
+            .request_material(&staged.owner, &engine(), &staged.store, &context, 101)
+            .unwrap()
+            .statement;
+        let good = absence(&public, 150 + GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, &operator());
+        // A lost response: the operator accepted, the device adopts (state B) and
+        // the late no-account status cannot discard it.
+        let response = staged.response.clone();
+        staged
+            .owner
+            .advance_pending(&engine(), &mut staged.store, &response, &trust(), [43; 32], 151)
+            .await
+            .unwrap();
+        assert!(
+            staged
+                .owner
+                .discard_elapsed_pending(&engine(), &mut staged.store, 150, &good, [60; 32], [61; 32])
+                .await
+                .is_err()
+        );
+        assert!(staged.owner.reopen_pending(&engine(), &staged.store, 152).unwrap().accepted());
+
+        // A second store: discard state A, then a fresh request stages normally.
+        let mut fresh = proven().await;
+        fresh.stage().await;
+        fresh
+            .owner
+            .discard_elapsed_pending(&engine(), &mut fresh.store, 150, &good, [60; 32], [61; 32])
+            .await
+            .unwrap();
+        let mut next = binding(operator().verifying_key().to_bytes());
+        next.acceptance.request_id = [0xA2; 32];
+        next.acceptance.request_digest = [0xB3; 32];
+        fresh
+            .proof
+            .stage_pending(
+                &fresh.owner,
+                &engine(),
+                &mut fresh.store,
+                &next,
+                fresh.outbox.clone(),
+                [65; 32],
+                102,
+            )
+            .await
+            .unwrap();
+        let reopened = fresh.owner.reopen_pending(&engine(), &fresh.store, 103).unwrap();
+        assert_eq!(reopened.binding.acceptance.request_id, [0xA2; 32]);
+        assert_eq!(fresh.owner.discarded_genesis(&fresh.store).unwrap(), vec![[0xB2; 32]]);
     });
 }

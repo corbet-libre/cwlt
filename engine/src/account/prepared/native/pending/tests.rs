@@ -493,3 +493,91 @@ fn accepted_record_is_engine_written_distinct_and_restores_the_accepted_commitme
 }
 
 const MAGIC_LEN: usize = b"cwlt.account-accepted.v1\0".len();
+
+/// An operator-signed owner-lookup status that reports no account, built from the
+/// Balance wire formats independently of the engine's own encoder.
+fn absence(community: [u8; 32], owner: [u8; 32], observed_at: u64, key: &OperatorKey) -> OwnerAbsence {
+    use sha2::{Digest as _, Sha256};
+    let device = OperatorKey::from_bytes(&[9; 32]);
+    let (issued_at, expires_at) = (observed_at - 10, observed_at + 90);
+    let mut request = b"cfrm.account.status.v1\0".to_vec();
+    request.extend_from_slice(&community);
+    request.extend_from_slice(&owner);
+    request.push(0);
+    request.extend_from_slice(&[0; 32]);
+    request.extend_from_slice(&[3; 32]);
+    request.extend_from_slice(&device.verifying_key().to_bytes());
+    request.extend_from_slice(&issued_at.to_be_bytes());
+    request.extend_from_slice(&expires_at.to_be_bytes());
+    let request_signature = device.sign(&request).to_bytes();
+    let digest: [u8; 32] = Sha256::digest([request, request_signature.to_vec()].concat()).into();
+    let mut response = b"cfrm.account.status-response.v1\0".to_vec();
+    response.extend_from_slice(&digest);
+    response.extend_from_slice(&observed_at.to_be_bytes());
+    response.push(0);
+    response.extend_from_slice(&[0; 32]);
+    OwnerAbsence {
+        community,
+        owner,
+        challenge: [3; 32],
+        chat_public_key: device.verifying_key().to_bytes(),
+        issued_at,
+        expires_at,
+        request_signature,
+        observed_at,
+        signature: key.sign(&response).to_bytes(),
+    }
+}
+
+#[test]
+fn an_elapsed_state_a_is_discardable_only_on_the_operators_own_late_no_account_status() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let public = proof.public_genesis();
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    // Statement time 101, horizon 200; the request expired at 150.
+    let expires = 150;
+    let due = expires + GENESIS_DISCARD_COMMIT_MARGIN_SECONDS;
+    let good = absence(public.community, public.owner, due, &operator());
+    let (_, binding) = engine.check_elapsed_pending(&sent, expires, &good).unwrap();
+    assert!(binding == real_binding());
+    // Only operator times decide: one second before the margin refuses. No local
+    // clock exists in this check, so a device clock far ahead cannot help; the
+    // ordinary reopen at that far-ahead time refuses on the horizon instead.
+    let early = absence(public.community, public.owner, due - 1, &operator());
+    assert!(engine.check_elapsed_pending(&sent, expires, &early).is_err());
+    assert!(engine.restore_pending_genesis(&sent, u64::MAX).is_err());
+    assert!(engine.check_elapsed_pending(&sent, expires, &good).is_ok());
+    // The observation must be about this owner and community.
+    let other = absence(public.community, [0xEE; 32], due, &operator());
+    assert!(engine.check_elapsed_pending(&sent, expires, &other).is_err());
+    let other = absence([0xEE; 32], public.owner, due, &operator());
+    assert!(engine.check_elapsed_pending(&sent, expires, &other).is_err());
+    // Signed under the sealed operator key only, over the exact values.
+    let foreign = absence(public.community, public.owner, due, &OperatorKey::from_bytes(&[6; 32]));
+    assert!(engine.check_elapsed_pending(&sent, expires, &foreign).is_err());
+    for tamper in [
+        |a: &mut OwnerAbsence| a.observed_at += 1,
+        |a: &mut OwnerAbsence| a.challenge = [4; 32],
+        |a: &mut OwnerAbsence| a.issued_at -= 1,
+        |a: &mut OwnerAbsence| a.request_signature[0] ^= 1,
+    ] {
+        let mut bad = good.clone();
+        tamper(&mut bad);
+        assert!(engine.check_elapsed_pending(&sent, expires, &bad).is_err());
+    }
+    // The stored expiry is bounded by the sealed statement and horizon.
+    for bad in [public.now, public.valid_until + 1] {
+        let late = absence(public.community, public.owner, bad + GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, &operator());
+        assert!(engine.check_elapsed_pending(&sent, bad, &late).is_err());
+    }
+    // State B (a verified acceptance) is never discardable.
+    let live = trust(None);
+    let accepted_response = response(&proof, &real_binding().acceptance, 120, false);
+    let accepted = engine.advance_pending(&sent, &accepted_response, &live, 102).unwrap();
+    assert!(engine.check_elapsed_pending(&accepted, expires, &good).is_err());
+    // Another engine cannot open the row at all.
+    let foreign_engine =
+        Engine::from_seed_and_sealing_key(&mut [6; 32], &mut [8; 32], b"community").unwrap();
+    assert!(foreign_engine.check_elapsed_pending(&sent, expires, &good).is_err());
+}

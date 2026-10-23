@@ -368,6 +368,19 @@ impl Engine {
         sealed: &SealedPendingGenesis,
         now: u64,
     ) -> Result<(PreparedGenesisProof, PendingGenesisBinding), Error> {
+        let (proof, binding) = self.open_pending(sealed)?;
+        proof
+            .candidate
+            .check_context(self, &proof.candidate.context, now)?;
+        Ok((proof, binding))
+    }
+
+    /// Authenticate and decode one pending companion of this engine without any
+    /// time check: the exact stored blind must reproduce the proven commitment.
+    fn open_pending(
+        &self,
+        sealed: &SealedPendingGenesis,
+    ) -> Result<(PreparedGenesisProof, PendingGenesisBinding), Error> {
         let state = sealed.0[MAGIC.len()];
         let offset = MAGIC.len() + 1;
         let nonce: [u8; NONCE] = sealed.0[offset..offset + NONCE]
@@ -440,7 +453,6 @@ impl Engine {
         if candidate.genesis_public().next_state != next_state {
             return Err(Error::Crypto);
         }
-        candidate.check_context(self, &context, now)?;
         Ok((
             PreparedGenesisProof {
                 candidate,
@@ -517,6 +529,109 @@ impl Engine {
             binding: binding.acceptance,
             extended_acceptance_digest: digest,
         })
+    }
+}
+
+/// Margin after a genesis request's `expires_at` before an operator status may
+/// prove that the request was never accepted. The ledger takes its commit
+/// decision strictly before `expires_at` (cblc `CommitDeadline`), but a decided
+/// transaction becomes visible to a later status read only once it is durable:
+/// the single libSQL writer persists it in milliseconds, behind a queue under
+/// load within a few seconds. 15 s is several times that and costs an overrun
+/// device one wait of at most 15 s before it re-prepares. Both compared times are
+/// the operator's own signed times; the device clock never takes part.
+pub const GENESIS_DISCARD_COMMIT_MARGIN_SECONDS: u64 = 15;
+
+const STATUS_REQUEST: &[u8] = b"cfrm.account.status.v1\0";
+const STATUS_RESPONSE: &[u8] = b"cfrm.account.status-response.v1\0";
+
+/// One operator-signed Balance status answer to an owner lookup (no request id)
+/// that reports no acceptance. The engine rebuilds both signed messages (the
+/// Balance `account_status_bytes` and `account_status_response_bytes` formats)
+/// from these raw values; nothing here is a caller verdict.
+#[derive(Clone, PartialEq, Eq)]
+pub struct OwnerAbsence {
+    /// Community digest the status request named.
+    pub community: [u8; 32],
+    /// Account owner the status request named.
+    pub owner: [u8; 32],
+    /// Fresh non-zero request challenge.
+    pub challenge: [u8; 32],
+    /// Device key that signed the status request.
+    pub chat_public_key: [u8; 32],
+    /// Status request window start.
+    pub issued_at: u64,
+    /// Status request window end.
+    pub expires_at: u64,
+    /// Device signature of the status request.
+    pub request_signature: [u8; 64],
+    /// The operator's own signed observation time.
+    pub observed_at: u64,
+    /// Operator signature of the status response.
+    pub signature: [u8; 64],
+}
+
+impl OwnerAbsence {
+    /// Strict Ed25519 verification of the response under `operator_key`, bound to
+    /// the exact request digest (SHA-256 of message then signature).
+    pub fn verify(&self, operator_key: &[u8; 32]) -> Result<(), Error> {
+        if self.challenge == [0; 32]
+            || self.issued_at == 0
+            || self.issued_at >= self.expires_at
+            || self.observed_at < self.issued_at
+            || self.observed_at >= self.expires_at
+        {
+            return Err(Error::Invalid);
+        }
+        let mut request = STATUS_REQUEST.to_vec();
+        request.extend_from_slice(&self.community);
+        request.extend_from_slice(&self.owner);
+        request.push(0);
+        request.extend_from_slice(&[0; 32]);
+        request.extend_from_slice(&self.challenge);
+        request.extend_from_slice(&self.chat_public_key);
+        request.extend_from_slice(&self.issued_at.to_be_bytes());
+        request.extend_from_slice(&self.expires_at.to_be_bytes());
+        // The same SHA-256(message || signature) construction as an acceptance digest.
+        let digest = czkp::account::acceptance_digest(&request, &self.request_signature);
+        let mut response = STATUS_RESPONSE.to_vec();
+        response.extend_from_slice(&digest);
+        response.extend_from_slice(&self.observed_at.to_be_bytes());
+        response.push(0);
+        response.extend_from_slice(&[0; 32]);
+        czkp::account::verify_acceptance(&response, operator_key, &self.signature)
+            .map_err(|_| Error::Crypto)
+    }
+}
+
+impl Engine {
+    /// Authorize the discard of one state-A companion whose request can no longer
+    /// be accepted: an operator status signed under the SEALED operator key shows
+    /// no account for the sealed owner and community at an observation time at
+    /// least `GENESIS_DISCARD_COMMIT_MARGIN_SECONDS` after the request's
+    /// `expires_at` (read by the upper owner from the receipt-bound outbox, and
+    /// bounded here by the sealed statement). State B never qualifies. No local
+    /// time is read. Returns the authenticated companion; nothing is written.
+    pub fn check_elapsed_pending(
+        &self,
+        sealed: &SealedPendingGenesis,
+        request_expires_at: u64,
+        absence: &OwnerAbsence,
+    ) -> Result<(PreparedGenesisProof, PendingGenesisBinding), Error> {
+        let (proof, binding) = self.open_pending(sealed)?;
+        let public = proof.candidate.genesis_public();
+        if binding.extended_acceptance_digest.is_some()
+            || absence.owner != public.owner
+            || absence.community != public.community
+            || request_expires_at <= public.now
+            || request_expires_at > public.valid_until
+            || absence.observed_at
+                < request_expires_at.saturating_add(GENESIS_DISCARD_COMMIT_MARGIN_SECONDS)
+        {
+            return Err(Error::Invalid);
+        }
+        absence.verify(&binding.acceptance.operator_key)?;
+        Ok((proof, binding))
     }
 }
 

@@ -8,14 +8,18 @@
 //! crash between the two is repaired by `settle_outbox`, never by a re-send.
 use super::*;
 use ckmg::wallet_engine::account::{
-    AcceptedAccount, AcceptedResponse, PendingGenesisBinding, ResponseTrust, SealedAcceptedAccount,
-    SealedPendingGenesis,
+    AcceptedAccount, AcceptedResponse, OwnerAbsence, PendingGenesisBinding, ResponseTrust,
+    SealedAcceptedAccount, SealedPendingGenesis,
 };
 use cwst::Output;
 
 const PENDING: &[u8] = b"pending-genesis.v1";
 const ACCEPTED: &[u8] = b"accepted-account.v1";
 const SETTLED: &[u8] = b"accepted-request.v1";
+/// Append-only record of discarded state-A requests: request digest then id.
+const DISCARDED: &[u8] = b"discarded-genesis.v1";
+/// One discarded request: its request digest and request id.
+type Discarded = ([u8; 32], [u8; 32]);
 
 fn digest(bytes: &[u8]) -> [u8; 32] {
     *blake3::hash(bytes).as_bytes()
@@ -264,6 +268,117 @@ impl DurableAccountOwner {
             store.ack_output(expected, operation, id).await?;
         }
         Ok(true)
+    }
+
+    /// Discard the one state-A companion whose request the operator can no longer
+    /// accept (`Engine::check_elapsed_pending`: an operator status, signed under
+    /// the sealed key, shows no account at least the commit margin after the
+    /// request's `expires_at`). ONE Store commit deletes exactly that pending row
+    /// and appends its request digest and id to the discarded record; the outbox
+    /// is acknowledged afterwards in a commit of its own (`settle_discarded`).
+    /// State B, an accepted account or any failed check discards nothing.
+    /// Returns the discarded request digest.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn discard_elapsed_pending<B: Backend>(
+        &self,
+        fresh_engine: &Engine,
+        store: &mut Store<B>,
+        request_expires_at: u64,
+        absence: &OwnerAbsence,
+        operation: [u8; 32],
+        acknowledgement: [u8; 32],
+    ) -> Result<[u8; 32], Error> {
+        if operation == [0; 32] || acknowledgement == [0; 32] || operation == acknowledgement {
+            return Err(Error::Conflict);
+        }
+        let projection = self.projection(fresh_engine, store)?;
+        if store.read(OWNER, ACCEPTED)?.is_some() {
+            return Err(Error::Conflict);
+        }
+        let row = committed_row(store, PENDING)?.ok_or(Error::Conflict)?;
+        let sealed = SealedPendingGenesis::from_bytes(row)?;
+        let (proof, binding) =
+            fresh_engine.check_elapsed_pending(&sealed, request_expires_at, absence)?;
+        check_row(&self.scope, proof.context(), &projection)?;
+        let id = binding.acceptance.request_id;
+        outbox(store, &id)?;
+        let mut record = committed_row(store, DISCARDED)?.unwrap_or_default().to_vec();
+        record.extend_from_slice(&binding.acceptance.request_digest);
+        record.extend_from_slice(&id);
+        let expected = store.version()?;
+        let receipt = store
+            .commit_with_receipt(
+                expected,
+                operation,
+                &[
+                    Change::Delete {
+                        owner: OWNER,
+                        key: PENDING,
+                    },
+                    Change::Put {
+                        owner: OWNER,
+                        key: DISCARDED,
+                        value: &record,
+                    },
+                ],
+                &[],
+            )
+            .await?;
+        if !receipt.is_commit(store, &operation)
+            || !receipt.contains_record(OWNER, DISCARDED, &digest(&record))
+            || store.read(OWNER, PENDING)?.is_some()
+        {
+            return Err(Error::Conflict);
+        }
+        self.settle_discarded(store, acknowledgement).await?;
+        Ok(binding.acceptance.request_digest)
+    }
+
+    /// Acknowledge every still pending outbox of a discarded request; such an
+    /// output is never sent again. Safe to repeat (a crash after the discard
+    /// commit leaves at most these outputs).
+    pub async fn settle_discarded<B: Backend>(
+        &self,
+        store: &mut Store<B>,
+        operation: [u8; 32],
+    ) -> Result<(), Error> {
+        if operation == [0; 32] {
+            return Err(Error::Conflict);
+        }
+        for (_, id) in self.discarded(store)? {
+            if store.load_pending()?.iter().any(|output| output.id == id) {
+                let expected = store.version()?;
+                store.ack_output(expected, operation, id).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The request digests of every discarded state-A companion, oldest first.
+    /// An operator acceptance of one of them is a broken discard guard: the upper
+    /// owner reports it, never adopts or ignores it.
+    pub fn discarded_genesis<B: Backend>(&self, store: &Store<B>) -> Result<Vec<[u8; 32]>, Error> {
+        Ok(self.discarded(store)?.into_iter().map(|(digest, _)| digest).collect())
+    }
+
+    fn discarded<B: Backend>(&self, store: &Store<B>) -> Result<Vec<Discarded>, Error> {
+        let Some(row) = committed_row(store, DISCARDED)? else {
+            return Ok(Vec::new());
+        };
+        let (entries, rest) = row.as_chunks::<64>();
+        if entries.is_empty() || !rest.is_empty() {
+            return Err(Error::Conflict);
+        }
+        Ok(entries
+            .iter()
+            .map(|entry| {
+                let (digest, id) = entry.split_at(32);
+                (
+                    digest.try_into().unwrap_or_default(),
+                    id.try_into().unwrap_or_default(),
+                )
+            })
+            .collect())
     }
 
     /// Reopen the accepted account record under a fresh engine and its receipt.

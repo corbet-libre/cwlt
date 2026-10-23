@@ -9,7 +9,10 @@ mod pending;
 mod response;
 pub use acceptance::{AcceptanceBinding, AcceptedGenesisProof, IssuerAcceptance};
 pub use accepted::{AcceptedAccount, MAX_ACCEPTED_SEALED, SealedAcceptedAccount};
-pub use pending::{MAX_PENDING_SEALED, PendingGenesisBinding, SealedPendingGenesis};
+pub use pending::{
+    GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, MAX_PENDING_SEALED, OwnerAbsence, PendingGenesisBinding,
+    SealedPendingGenesis,
+};
 pub use response::{AcceptedResponse, AncestryResponse, Frontier, ResponseTrust};
 #[cfg(test)]
 mod tests;
