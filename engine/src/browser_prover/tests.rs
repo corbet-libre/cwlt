@@ -208,6 +208,26 @@ fn the_setup_names_public_data_only_and_the_pins_from_the_table() {
 }
 
 #[test]
+fn the_circuit_id_names_the_circuit_version_and_nothing_else() {
+    let prover = BrowserProver::new(config(), Fake::new(Err(Error::Crypto))).unwrap();
+    let setup: serde_json::Value = serde_json::from_str(prover.setup_json()).unwrap();
+    // The setup carries the id the device keeps its calibration under.
+    assert_eq!(setup["circuit_id"], prover.circuit_id());
+    assert_eq!(prover.circuit_id().len(), 64);
+    assert!(prover.circuit_id().bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+    // Timeout and threads are not part of the circuit version; the setup size is.
+    let mut other = config();
+    other.timeout = Duration::from_secs(60);
+    other.max_threads = 2;
+    let same = BrowserProver::new(other, Fake::new(Err(Error::Crypto))).unwrap();
+    assert_eq!(same.circuit_id(), prover.circuit_id());
+    let mut smaller = config();
+    smaller.srs.points = 1 << 19;
+    let smaller = BrowserProver::new(smaller, Fake::new(Err(Error::Crypto))).unwrap();
+    assert_ne!(smaller.circuit_id(), prover.circuit_id());
+}
+
+#[test]
 fn a_matching_verified_reply_becomes_the_proof_and_the_worker_got_exactly_the_input() {
     let public = publics();
     let worker = Fake::new(Ok(reply(true, &public, &[7; 64])));

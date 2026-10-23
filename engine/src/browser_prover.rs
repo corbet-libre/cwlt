@@ -19,6 +19,7 @@ use std::{
     time::Duration,
 };
 use zeroize::Zeroizing;
+pub mod calibration;
 #[cfg(test)]
 mod tests;
 
@@ -151,6 +152,7 @@ pub struct BrowserProver {
     config: Arc<Config>,
     abi: Arc<Abi>,
     setup: Arc<String>,
+    circuit_id: Arc<String>,
     worker: Arc<dyn ProofWorker>,
     active: Arc<AtomicUsize>,
     cancelled: Arc<AtomicBool>,
@@ -164,6 +166,9 @@ struct Config {
 struct SetupWire<'a> {
     version: u8,
     program: &'a str,
+    /// Names this circuit version (program, circuit, key, setup size): the key under which a
+    /// device keeps its calibration, so a changed circuit is calibrated again.
+    circuit_id: &'a str,
     /// The program's member of the circuit group: bytecode and ABI, without debug symbols.
     circuit: serde_json::Value,
     verification_key: String,
@@ -228,9 +233,18 @@ impl BrowserProver {
             "bytecode": member.get("bytecode").ok_or(Error::Invalid)?,
             "abi": member.get("abi").ok_or(Error::Invalid)?,
         });
+        let circuit_id = {
+            let mut identity = Vec::with_capacity(96);
+            identity.extend_from_slice(config.program.key().as_bytes());
+            identity.extend_from_slice(&config.scope.circuit_digest);
+            identity.extend_from_slice(&config.scope.verifying_key_digest);
+            identity.extend_from_slice(&pin.points.to_be_bytes());
+            hex(&crate::prover_shared::sha(&identity)?)
+        };
         let wire = SetupWire {
             version: 1,
             program: config.program.key(),
+            circuit_id: &circuit_id,
             circuit,
             verification_key: hex(&checked.key),
             srs: SrsWire {
@@ -252,6 +266,7 @@ impl BrowserProver {
             }),
             abi: Arc::new(checked.abi),
             setup: Arc::new(setup),
+            circuit_id: Arc::new(circuit_id),
             worker,
             active: Arc::new(AtomicUsize::new(0)),
             cancelled: Arc::new(AtomicBool::new(false)),
@@ -269,6 +284,26 @@ impl BrowserProver {
     /// The public setup the Worker receives; it holds no private input.
     pub fn setup_json(&self) -> &str {
         &self.setup
+    }
+
+    /// Names this circuit version; a device's calibration is kept under it (lowercase hex).
+    pub fn circuit_id(&self) -> &str {
+        &self.circuit_id
+    }
+
+    /// Prove one input through the same checks as an account proof, for the wasm probe: the
+    /// engine derives the public inputs from `public_json` itself and accepts only a reply that
+    /// matches them. It exists so the browser build can show, in a real browser, that the
+    /// public-input derivation and the reply checks run on wasm32; the account paths use
+    /// [`BrowserProver::prove`] through the prepared proof.
+    #[cfg(feature = "browser-prover-probe")]
+    pub async fn probe_prove(
+        &self,
+        public_json: &str,
+        input: Zeroizing<String>,
+    ) -> Result<Proof, Error> {
+        let expected = self.public_inputs(public_json)?;
+        self.prove(input, expected).await
     }
 
     pub(crate) fn public_inputs(&self, input: &str) -> Result<Vec<[u8; 32]>, Error> {

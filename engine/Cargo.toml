@@ -20,6 +20,8 @@ prover-core = ["dep:acvm", "dep:noirc_abi", "dep:data-encoding"]
 native-prover = ["prover-core", "dep:noirc_artifacts", "dep:nargo", "dep:bn254_blackbox_solver", "dep:barretenberg-rs", "dep:rlimit", "dep:flate2"]
 # The browser prover: the engine side of a proof that runs in a Web Worker behind the `ProofWorker` port.
 browser-prover = ["prover-core"]
+# A probe entry for the wasm32 browser test of the prover path; never part of a product build.
+browser-prover-probe = ["browser-prover"]
 
 [dependencies]
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
