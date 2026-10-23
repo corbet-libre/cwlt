@@ -135,10 +135,7 @@ impl PassportSession<'_> {
 
     /// The exact bytes of the pending stamp request when it carries every one of
     /// `actions`; a device interrupted after sending sends them again.
-    pub fn pending_stamp_request(
-        &self,
-        actions: &[(StampScope, StampAction)],
-    ) -> Option<Vec<u8>> {
+    pub fn pending_stamp_request(&self, actions: &[(StampScope, StampAction)]) -> Option<Vec<u8>> {
         self.0.pending_stamp_request(actions)
     }
 

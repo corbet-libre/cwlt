@@ -395,10 +395,18 @@ mod tests {
             .unwrap();
         assert_eq!(evidence.record().certificate, signed.signature);
         for now in [199, 300] {
-            assert!(account.record_epoch_signed(&epoch, &signed, [1; 32], now).is_err());
+            assert!(
+                account
+                    .record_epoch_signed(&epoch, &signed, [1; 32], now)
+                    .is_err()
+            );
         }
         let mut short = signed.clone();
         short.signature.pop();
-        assert!(account.record_epoch_signed(&epoch, &short, [1; 32], 250).is_err());
+        assert!(
+            account
+                .record_epoch_signed(&epoch, &short, [1; 32], 250)
+                .is_err()
+        );
     }
 }
