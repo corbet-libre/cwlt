@@ -37,6 +37,54 @@ pub struct AccountKey {
 
 /// Bounded ciphertext for this concrete private owner only.
 pub struct SealedAccountKey(Vec<u8>);
+
+/// One account-key signature over exactly one digest. No Clone, Debug or serde.
+///
+/// Only the raw balance seed and balance sealing key can mint it, and those bytes
+/// exist only inside Keys custody (ckmg's private identity roots); no [`Engine`],
+/// [`AccountKey`] or other lent value produces one. Keys mints it after the ledger,
+/// the exact (action, digest) admission and the final current recheck, for the one
+/// digest it admitted. [`Self::sign`] consumes it: it restores the key, signs that
+/// digest and drops the key.
+///
+/// ```compile_fail
+/// # fn escape(engine: &cwlt_engine::Engine, sealed: &cwlt_engine::account_key::SealedAccountKey) {
+/// let key = engine.restore_account_key(sealed, "scope").unwrap();
+/// let _ = key.sign_prehash(engine, &[0; 32]);
+/// # }
+/// ```
+/// ```compile_fail
+/// # fn copy(signing: cwlt_engine::account_key::AccountSigning) {
+/// let again = signing.clone();
+/// # }
+/// ```
+pub struct AccountSigning {
+    engine: Engine,
+    digest: [u8; 32],
+}
+
+impl AccountSigning {
+    /// Bind the raw balance seed and sealing key to one digest. Both caller buffers
+    /// are wiped on every return. Keys calls this only for a digest it admitted.
+    pub fn mint(
+        seed: &mut [u8; 32],
+        sealing_key: &mut [u8; 32],
+        wallet_context: &[u8],
+        digest: [u8; 32],
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            engine: Engine::from_seed_and_sealing_key(seed, sealing_key, wallet_context)?,
+            digest,
+        })
+    }
+
+    /// Restore the account key from `sealed` under `scope`, sign exactly the minted
+    /// digest and drop the key.
+    pub fn sign(self, sealed: &SealedAccountKey, scope: &str) -> Result<[u8; 64], Error> {
+        let key = self.engine.restore_account_key(sealed, scope)?;
+        key.sign_prehash(&self.engine, &self.digest)
+    }
+}
 impl SealedAccountKey {
     /// Check the exact envelope before original immutable-binding authentication.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
@@ -139,11 +187,10 @@ impl AccountKey {
     }
 
     /// Sign one 32-byte digest with the account key: P-256, deterministic (RFC 6979), low-S,
-    /// the exact form the update circuit and `verify_prehash` accept. This is a raw
-    /// primitive: which digests may be signed, once per slot and phase, is decided by the
-    /// caller's Keys admission and ledger, never here. The engine must be the one that
-    /// restored this key.
-    pub fn sign_prehash(&self, engine: &Engine, digest: &[u8; 32]) -> Result<[u8; 64], Error> {
+    /// the exact form the update circuit and `verify_prehash` accept. Crate-private: the
+    /// only caller is [`AccountSigning::sign`], which Keys mints for one admitted digest.
+    /// The engine must be the one that restored this key.
+    pub(crate) fn sign_prehash(&self, engine: &Engine, digest: &[u8; 32]) -> Result<[u8; 64], Error> {
         if self.seed[..] != engine.seed[..]
             || !engine.sealing.matches_context(self.scope.as_bytes())
         {
@@ -242,6 +289,28 @@ mod tests {
         let other = self::engine(6, 8, b"community");
         assert!(key.sign_prehash(&other, &digest).is_err());
     }
+    #[test]
+    fn a_minted_signing_signs_exactly_its_digest_and_needs_the_same_roots() {
+        let engine = engine(7, 8, b"community");
+        let key = engine.prepare_account_key("community", [1; 32]).unwrap();
+        let public = key.projection(&engine).unwrap().public_key;
+        let sealed = key.seal().unwrap();
+        let mint = |seed, sealing, digest| {
+            AccountSigning::mint(&mut [seed; 32], &mut [sealing; 32], b"community", digest)
+                .unwrap()
+        };
+        let signature = mint(7, 8, [9; 32]).sign(&sealed, "community").unwrap();
+        crate::account::verify_prehash(&public, &[9; 32], &signature).unwrap();
+        // Deterministic: a retry recomputes identical bytes.
+        assert_eq!(
+            mint(7, 8, [9; 32]).sign(&sealed, "community").unwrap(),
+            signature
+        );
+        assert!(mint(6, 8, [9; 32]).sign(&sealed, "community").is_err());
+        assert!(mint(7, 6, [9; 32]).sign(&sealed, "community").is_err());
+        assert!(mint(7, 8, [9; 32]).sign(&sealed, "other").is_err());
+    }
+
     #[test]
     fn authentic_nonpending_tag_and_zero_operation_never_restore() {
         let engine = engine(7, 8, b"community");

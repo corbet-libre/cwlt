@@ -90,18 +90,29 @@ impl DurableAccountOwner {
         })
     }
 
-    /// The restored account key, for the narrow exact-digest signing admissions only.
-    pub fn key(&self) -> &AccountKey {
-        &self.key
+    /// The committed account-key capsule. Only Keys signs with it
+    /// (`Keys::sign_account_digest`); nothing here lends a signer.
+    pub fn sealed(&self) -> &SealedAccountKey {
+        &self.sealed
     }
 
-    /// Open only a real authenticated existing winner; absence never creates.
-    pub fn open<B: Backend>(engine: Engine, store: &Store<B>, scope: &str) -> Result<Self, Error> {
+    /// Read only the committed, receipt-authenticated capsule, with no engine and no
+    /// restored key. Keys restores it inside its own custody when it signs.
+    pub fn committed_sealed<B: Backend>(
+        store: &Store<B>,
+        scope: &str,
+    ) -> Result<SealedAccountKey, Error> {
         if !store.is_scope(scope) {
             return Err(Error::Conflict);
         }
         let sealed = SealedAccountKey::from_bytes(store.read(OWNER, KEY)?.ok_or(Error::Conflict)?)?;
         receipt(store, &store.operation()?, &sealed)?;
+        Ok(sealed)
+    }
+
+    /// Open only a real authenticated existing winner; absence never creates.
+    pub fn open<B: Backend>(engine: Engine, store: &Store<B>, scope: &str) -> Result<Self, Error> {
+        let sealed = Self::committed_sealed(store, scope)?;
         let key = engine.restore_account_key(&sealed, scope)?;
         Ok(Self {
             key,
