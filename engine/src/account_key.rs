@@ -190,7 +190,11 @@ impl AccountKey {
     /// the exact form the update circuit and `verify_prehash` accept. Crate-private: the
     /// only caller is [`AccountSigning::sign`], which Keys mints for one admitted digest.
     /// The engine must be the one that restored this key.
-    pub(crate) fn sign_prehash(&self, engine: &Engine, digest: &[u8; 32]) -> Result<[u8; 64], Error> {
+    pub(crate) fn sign_prehash(
+        &self,
+        engine: &Engine,
+        digest: &[u8; 32],
+    ) -> Result<[u8; 64], Error> {
         if self.seed[..] != engine.seed[..]
             || !engine.sealing.matches_context(self.scope.as_bytes())
         {
@@ -296,8 +300,7 @@ mod tests {
         let public = key.projection(&engine).unwrap().public_key;
         let sealed = key.seal().unwrap();
         let mint = |seed, sealing, digest| {
-            AccountSigning::mint(&mut [seed; 32], &mut [sealing; 32], b"community", digest)
-                .unwrap()
+            AccountSigning::mint(&mut [seed; 32], &mut [sealing; 32], b"community", digest).unwrap()
         };
         let signature = mint(7, 8, [9; 32]).sign(&sealed, "community").unwrap();
         crate::account::verify_prehash(&public, &[9; 32], &signature).unwrap();
