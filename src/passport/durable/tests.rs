@@ -393,7 +393,9 @@ async fn stamp_under_another_epoch_is_refused<B: Backend + Clone>(backend: B) {
     const NOW: Timestamp = 3_600_200;
     let mut rng = StdRng::seed_from_u64(805);
     let cipher = cipher();
-    let mut store = Store::create(backend, &cipher, "wallet-test").await.unwrap();
+    let mut store = Store::create(backend, &cipher, "wallet-test")
+        .await
+        .unwrap();
     let mut holder = DurableHolder::create(initial(), &mut store, "wallet-test", [1; 32], &mut rng)
         .await
         .unwrap();
