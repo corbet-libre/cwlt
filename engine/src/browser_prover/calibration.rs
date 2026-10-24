@@ -157,7 +157,12 @@ mod tests {
         assert_eq!((fast.class, fast.fits), (DeviceClass::Fast, true));
         let slow = forecast(95_000, 100).expect("forecast");
         assert_eq!(
-            (slow.class, slow.fits, slow.predicted_millis, slow.window_seconds),
+            (
+                slow.class,
+                slow.fits,
+                slow.predicted_millis,
+                slow.window_seconds
+            ),
             (DeviceClass::TooSlow, false, 95_000, 100)
         );
     }

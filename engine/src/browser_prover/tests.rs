@@ -214,7 +214,12 @@ fn the_circuit_id_names_the_circuit_version_and_nothing_else() {
     // The setup carries the id the device keeps its calibration under.
     assert_eq!(setup["circuit_id"], prover.circuit_id());
     assert_eq!(prover.circuit_id().len(), 64);
-    assert!(prover.circuit_id().bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+    assert!(
+        prover
+            .circuit_id()
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    );
     // Timeout and threads are not part of the circuit version; the setup size is.
     let mut other = config();
     other.timeout = Duration::from_secs(60);
