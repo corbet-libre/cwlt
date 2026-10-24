@@ -302,7 +302,9 @@ impl DurableAccountOwner {
         check_row(&self.scope, proof.context(), &projection)?;
         let id = binding.acceptance.request_id;
         outbox(store, &id)?;
-        let mut record = committed_row(store, DISCARDED)?.unwrap_or_default().to_vec();
+        let mut record = committed_row(store, DISCARDED)?
+            .unwrap_or_default()
+            .to_vec();
         record.extend_from_slice(&binding.acceptance.request_digest);
         record.extend_from_slice(&id);
         let expected = store.version()?;
@@ -358,7 +360,11 @@ impl DurableAccountOwner {
     /// An operator acceptance of one of them is a broken discard guard: the upper
     /// owner reports it, never adopts or ignores it.
     pub fn discarded_genesis<B: Backend>(&self, store: &Store<B>) -> Result<Vec<[u8; 32]>, Error> {
-        Ok(self.discarded(store)?.into_iter().map(|(digest, _)| digest).collect())
+        Ok(self
+            .discarded(store)?
+            .into_iter()
+            .map(|(digest, _)| digest)
+            .collect())
     }
 
     fn discarded<B: Backend>(&self, store: &Store<B>) -> Result<Vec<Discarded>, Error> {

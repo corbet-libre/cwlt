@@ -537,7 +537,10 @@ fn absence(public: &GenesisPublic, observed_at: u64, key: &OperatorKey) -> Owner
     request.extend_from_slice(&expires_at.to_be_bytes());
     let request_signature = device.sign(&request).to_bytes();
     let mut response = b"cfrm.account.status-response.v1\0".to_vec();
-    response.extend_from_slice(&czkp::account::acceptance_digest(&request, &request_signature));
+    response.extend_from_slice(&czkp::account::acceptance_digest(
+        &request,
+        &request_signature,
+    ));
     response.extend_from_slice(&observed_at.to_be_bytes());
     response.push(0);
     response.extend_from_slice(&[0; 32]);
@@ -593,16 +596,38 @@ fn an_elapsed_state_a_is_discarded_in_one_commit_that_keeps_its_request_digest()
                     .is_err()
             );
         }
-        assert_eq!(staged.backend.writes.get(), writes, "refusals write nothing");
-        assert!(staged.owner.discarded_genesis(&staged.store).unwrap().is_empty());
+        assert_eq!(
+            staged.backend.writes.get(),
+            writes,
+            "refusals write nothing"
+        );
+        assert!(
+            staged
+                .owner
+                .discarded_genesis(&staged.store)
+                .unwrap()
+                .is_empty()
+        );
         let digest = staged
             .owner
-            .discard_elapsed_pending(&engine(), &mut staged.store, expires, &good, [60; 32], [61; 32])
+            .discard_elapsed_pending(
+                &engine(),
+                &mut staged.store,
+                expires,
+                &good,
+                [60; 32],
+                [61; 32],
+            )
             .await
             .unwrap();
         assert_eq!(digest, [0xB2; 32]);
         // Exactly the pending row went; the digest stays, the outbox is acknowledged.
-        assert!(staged.owner.reopen_pending(&engine(), &staged.store, 102).is_err());
+        assert!(
+            staged
+                .owner
+                .reopen_pending(&engine(), &staged.store, 102)
+                .is_err()
+        );
         assert_eq!(
             staged.owner.discarded_genesis(&staged.store).unwrap(),
             vec![[0xB2; 32]]
@@ -632,23 +657,47 @@ fn an_accepted_state_is_never_discarded_and_a_fresh_request_stages_after_a_disca
             .request_material(&staged.owner, &engine(), &staged.store, &context, 101)
             .unwrap()
             .statement;
-        let good = absence(&public, 150 + GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, &operator());
+        let good = absence(
+            &public,
+            150 + GENESIS_DISCARD_COMMIT_MARGIN_SECONDS,
+            &operator(),
+        );
         // A lost response: the operator accepted, the device adopts (state B) and
         // the late no-account status cannot discard it.
         let response = staged.response.clone();
         staged
             .owner
-            .advance_pending(&engine(), &mut staged.store, &response, &trust(), [43; 32], 151)
+            .advance_pending(
+                &engine(),
+                &mut staged.store,
+                &response,
+                &trust(),
+                [43; 32],
+                151,
+            )
             .await
             .unwrap();
         assert!(
             staged
                 .owner
-                .discard_elapsed_pending(&engine(), &mut staged.store, 150, &good, [60; 32], [61; 32])
+                .discard_elapsed_pending(
+                    &engine(),
+                    &mut staged.store,
+                    150,
+                    &good,
+                    [60; 32],
+                    [61; 32]
+                )
                 .await
                 .is_err()
         );
-        assert!(staged.owner.reopen_pending(&engine(), &staged.store, 152).unwrap().accepted());
+        assert!(
+            staged
+                .owner
+                .reopen_pending(&engine(), &staged.store, 152)
+                .unwrap()
+                .accepted()
+        );
 
         // A second store: discard state A, then a fresh request stages normally.
         let mut fresh = proven().await;
@@ -674,8 +723,14 @@ fn an_accepted_state_is_never_discarded_and_a_fresh_request_stages_after_a_disca
             )
             .await
             .unwrap();
-        let reopened = fresh.owner.reopen_pending(&engine(), &fresh.store, 103).unwrap();
+        let reopened = fresh
+            .owner
+            .reopen_pending(&engine(), &fresh.store, 103)
+            .unwrap();
         assert_eq!(reopened.binding.acceptance.request_id, [0xA2; 32]);
-        assert_eq!(fresh.owner.discarded_genesis(&fresh.store).unwrap(), vec![[0xB2; 32]]);
+        assert_eq!(
+            fresh.owner.discarded_genesis(&fresh.store).unwrap(),
+            vec![[0xB2; 32]]
+        );
     });
 }
