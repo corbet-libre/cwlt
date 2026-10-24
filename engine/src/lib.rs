@@ -8,13 +8,13 @@ pub mod account;
 /// Internal cryptographic state; the upper wallet owns every durable receipt.
 /// Its public data is not enrollment, admission or accepted-account authority.
 pub mod account_key;
-/// Native private witness execution over the maintained original Noir/BB owners.
-#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
-pub mod native_prover;
 /// The engine side of the browser prover: material checks, expected public inputs and the
 /// `ProofWorker` port a Web Worker answers behind.
 #[cfg(feature = "browser-prover")]
 pub mod browser_prover;
+/// Native private witness execution over the maintained original Noir/BB owners.
+#[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
+pub mod native_prover;
 /// Checked integer planning of every account transition (shared by native and wasm holders).
 pub mod plan;
 mod proof;

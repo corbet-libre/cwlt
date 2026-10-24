@@ -11,11 +11,11 @@ mod witness;
 #[cfg(feature = "driver")]
 pub use witness::driver;
 
-pub use activation::{ActivationProof, ActivationRequest};
-#[cfg(feature = "browser-prover")]
-pub use activation::prove_activation_browser;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use activation::prove_activation;
+#[cfg(feature = "browser-prover")]
+pub use activation::prove_activation_browser;
+pub use activation::{ActivationProof, ActivationRequest};
 pub use czkp::ProofScope as GenesisProofScope;
 pub use policy::{AccountPolicy, ExtensionPolicy};
 pub use prepared::{

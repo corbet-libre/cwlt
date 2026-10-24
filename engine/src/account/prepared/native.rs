@@ -1,10 +1,10 @@
 //! Original typed genesis witness; private serialization stays inside this owner.
 use super::*;
-use crate::proof::Proof;
 #[cfg(feature = "prover-core")]
 use crate::account::witness::{Account, Checkpoint, Genesis};
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 use crate::native_prover::NativeProver;
+use crate::proof::Proof;
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 use std::time::Instant;
 mod acceptance;

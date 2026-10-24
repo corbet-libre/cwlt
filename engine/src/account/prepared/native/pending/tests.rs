@@ -496,7 +496,12 @@ const MAGIC_LEN: usize = b"cwlt.account-accepted.v1\0".len();
 
 /// An operator-signed owner-lookup status that reports no account, built from the
 /// Balance wire formats independently of the engine's own encoder.
-fn absence(community: [u8; 32], owner: [u8; 32], observed_at: u64, key: &OperatorKey) -> OwnerAbsence {
+fn absence(
+    community: [u8; 32],
+    owner: [u8; 32],
+    observed_at: u64,
+    key: &OperatorKey,
+) -> OwnerAbsence {
     use sha2::{Digest as _, Sha256};
     let device = OperatorKey::from_bytes(&[9; 32]);
     let (issued_at, expires_at) = (observed_at - 10, observed_at + 90);
@@ -545,17 +550,38 @@ fn an_elapsed_state_a_is_discardable_only_on_the_operators_own_late_no_account_s
     // clock exists in this check, so a device clock far ahead cannot help; the
     // ordinary reopen at that far-ahead time refuses on the horizon instead.
     let early = absence(public.community, public.owner, due - 1, &operator());
-    assert!(engine.check_elapsed_pending(&sent, expires, &early).is_err());
+    assert!(
+        engine
+            .check_elapsed_pending(&sent, expires, &early)
+            .is_err()
+    );
     assert!(engine.restore_pending_genesis(&sent, u64::MAX).is_err());
     assert!(engine.check_elapsed_pending(&sent, expires, &good).is_ok());
     // The observation must be about this owner and community.
     let other = absence(public.community, [0xEE; 32], due, &operator());
-    assert!(engine.check_elapsed_pending(&sent, expires, &other).is_err());
+    assert!(
+        engine
+            .check_elapsed_pending(&sent, expires, &other)
+            .is_err()
+    );
     let other = absence([0xEE; 32], public.owner, due, &operator());
-    assert!(engine.check_elapsed_pending(&sent, expires, &other).is_err());
+    assert!(
+        engine
+            .check_elapsed_pending(&sent, expires, &other)
+            .is_err()
+    );
     // Signed under the sealed operator key only, over the exact values.
-    let foreign = absence(public.community, public.owner, due, &OperatorKey::from_bytes(&[6; 32]));
-    assert!(engine.check_elapsed_pending(&sent, expires, &foreign).is_err());
+    let foreign = absence(
+        public.community,
+        public.owner,
+        due,
+        &OperatorKey::from_bytes(&[6; 32]),
+    );
+    assert!(
+        engine
+            .check_elapsed_pending(&sent, expires, &foreign)
+            .is_err()
+    );
     for tamper in [
         |a: &mut OwnerAbsence| a.observed_at += 1,
         |a: &mut OwnerAbsence| a.challenge = [4; 32],
@@ -568,16 +594,31 @@ fn an_elapsed_state_a_is_discardable_only_on_the_operators_own_late_no_account_s
     }
     // The stored expiry is bounded by the sealed statement and horizon.
     for bad in [public.now, public.valid_until + 1] {
-        let late = absence(public.community, public.owner, bad + GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, &operator());
+        let late = absence(
+            public.community,
+            public.owner,
+            bad + GENESIS_DISCARD_COMMIT_MARGIN_SECONDS,
+            &operator(),
+        );
         assert!(engine.check_elapsed_pending(&sent, bad, &late).is_err());
     }
     // State B (a verified acceptance) is never discardable.
     let live = trust(None);
     let accepted_response = response(&proof, &real_binding().acceptance, 120, false);
-    let accepted = engine.advance_pending(&sent, &accepted_response, &live, 102).unwrap();
-    assert!(engine.check_elapsed_pending(&accepted, expires, &good).is_err());
+    let accepted = engine
+        .advance_pending(&sent, &accepted_response, &live, 102)
+        .unwrap();
+    assert!(
+        engine
+            .check_elapsed_pending(&accepted, expires, &good)
+            .is_err()
+    );
     // Another engine cannot open the row at all.
     let foreign_engine =
         Engine::from_seed_and_sealing_key(&mut [6; 32], &mut [8; 32], b"community").unwrap();
-    assert!(foreign_engine.check_elapsed_pending(&sent, expires, &good).is_err());
+    assert!(
+        foreign_engine
+            .check_elapsed_pending(&sent, expires, &good)
+            .is_err()
+    );
 }

@@ -4,9 +4,9 @@
 //! The account grants no authority: it is not enrolled anywhere and its secrets
 //! are discarded with this call.
 use super::{AccountPolicy, Enrollment, ExtensionPolicy, GenesisContext, GenesisPublic, hashes};
-use crate::{Engine, Error};
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 use crate::native_prover::NativeProver;
+use crate::{Engine, Error};
 use czkp::poseidon::{integer, limbs};
 
 /// What the hub's terms name: the community and the exact policies to prove under.
