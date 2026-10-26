@@ -142,6 +142,22 @@ impl AcceptedAccount {
             .record_epoch_signed(epoch, signed, presentation_key, now)
     }
 
+    /// The record leaf the ledger delivered with this acceptance for record epoch
+    /// `epoch` (the join-time record leaf of an account that started after the
+    /// freeze), when it is exactly this account's state. `None` for every other
+    /// account, epoch or retained ancestry: the caller then takes the common
+    /// download. The issuer's signature is checked at `record_epoch_signed`.
+    pub fn delivered_record_leaf(&self, epoch: u64) -> Option<czkp::record::SignedLeaf> {
+        let ancestry = self.response.ancestry.as_ref()?;
+        if ancestry.epoch != epoch {
+            return None;
+        }
+        let signed: czkp::record::SignedLeaf = serde_json::from_slice(&ancestry.record).ok()?;
+        let leaf = &signed.leaf;
+        (leaf.owner == self.owner() && leaf.version == self.version() && leaf.state == self.state())
+            .then_some(signed)
+    }
+
     /// Vouchers this accepted account may still hand out at `now` in the sponsor role
     /// `role` (see `Account::voucher_remaining`).
     pub fn voucher_remaining(&self, role: u8, now: u64) -> Result<u64, Error> {

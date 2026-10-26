@@ -502,6 +502,34 @@ fn a_join_record_must_be_exactly_the_accepted_genesis_state() {
     assert!(advance(&reissue(join_record(&public).0, vec![1, 2, 3])).is_err());
 }
 
+/// The delivered join record is offered for exactly its epoch; an acceptance
+/// without a record (an account with no join record) offers none.
+#[test]
+fn the_accepted_account_offers_its_join_record_for_exactly_its_epoch() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let live = trust(Some(frontier()));
+    let with = response(&proof, &a.acceptance, 150, true);
+    let accepted = engine.advance_pending(&sent, &with, &live, 102).unwrap();
+    let activated = engine.activate_pending(&accepted, &live, 103).unwrap();
+    let sealed = activated.seal_account(&engine).unwrap();
+    let accepted = engine.restore_accepted_account(&sealed).unwrap();
+    let leaf = accepted.delivered_record_leaf(3).unwrap();
+    assert_eq!(leaf.leaf.owner, accepted.owner());
+    assert_eq!(leaf.leaf.version, accepted.version());
+    assert_eq!(leaf.leaf.state, accepted.state());
+    // The next epoch takes the common download.
+    assert!(accepted.delivered_record_leaf(4).is_none());
+    let without = response(&proof, &a.acceptance, 150, false);
+    let accepted = engine.advance_pending(&sent, &without, &live, 102).unwrap();
+    let activated = engine.activate_pending(&accepted, &live, 103).unwrap();
+    let sealed = activated.seal_account(&engine).unwrap();
+    let accepted = engine.restore_accepted_account(&sealed).unwrap();
+    assert!(accepted.delivered_record_leaf(3).is_none());
+}
+
 #[test]
 fn accepted_record_is_engine_written_distinct_and_restores_the_accepted_commitment() {
     let (engine, context) = super::super::tests::fixture();
