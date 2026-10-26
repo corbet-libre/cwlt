@@ -218,6 +218,33 @@ fn frontier() -> Frontier {
     }
 }
 
+/// The join-time record leaf the ledger signs for an accepted genesis: the exact
+/// genesis state under a fresh blinding. The Ed25519 signature is only checked
+/// at presentation (against the epoch descriptor), so the fixture leaves it zero.
+fn join_leaf(public: &GenesisPublic) -> czkp::record::Leaf {
+    czkp::record::Leaf {
+        owner: public.owner,
+        version: public.next_version,
+        state: public.next_state,
+        required_inbox: [7; 32],
+        role: 0,
+        blinding: [8; 32],
+    }
+}
+
+fn join_record_of(public: &GenesisPublic, leaf: czkp::record::Leaf) -> ([u8; 32], Vec<u8>) {
+    let commitment = leaf.commitment(&public.community, 3).unwrap();
+    let signed = czkp::record::SignedLeaf {
+        leaf,
+        signature: vec![0; 64],
+    };
+    (commitment, serde_json::to_vec(&signed).unwrap())
+}
+
+fn join_record(public: &GenesisPublic) -> ([u8; 32], Vec<u8>) {
+    join_record_of(public, join_leaf(public))
+}
+
 /// A genuine issuer response for the candidate, signed with test keys.
 fn response(
     proof: &PreparedGenesisProof,
@@ -233,12 +260,13 @@ fn response(
         &super::super::response::accepted_state(&public, proof.scope(), &IDENTITY, at).bytes(),
     );
     let ancestry = with_frontier.then(|| {
+        let (frozen_leaf, record) = join_record(&public);
         let mut ancestry = AncestryResponse {
             epoch: 3,
             root: [5; 32],
-            frozen_leaf: [6; 32],
+            frozen_leaf,
             signature: [0; 64],
-            record: vec![1, 2, 3],
+            record,
         };
         let bytes = super::super::response::ancestry_body(&public, proof.scope(), &ancestry, at)
             .bytes()
@@ -418,6 +446,60 @@ fn a_genesis_after_the_freeze_carries_no_ancestry_and_activates_under_the_curren
             150
         );
     }
+}
+
+/// The join-time record leaf rides the genesis acceptance. Even with a valid issuer
+/// signature over the ancestry, the leaf must be exactly the accepted genesis state
+/// and its blinded commitment must be the certified `frozen_leaf`.
+#[test]
+fn a_join_record_must_be_exactly_the_accepted_genesis_state() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    let live = trust(Some(frontier()));
+    let public = proof.public_genesis();
+    let at = 150;
+    let advance = |response: &AcceptedResponse| engine.advance_pending(&sent, response, &live, 102);
+    assert!(advance(&good).is_ok());
+    // Re-issue the ancestry with a valid signature over whatever the test changed.
+    let reissue = |frozen_leaf: [u8; 32], record: Vec<u8>| {
+        let mut ancestry = AncestryResponse {
+            epoch: 3,
+            root: [5; 32],
+            frozen_leaf,
+            signature: [0; 64],
+            record,
+        };
+        let bytes = super::super::response::ancestry_body(&public, proof.scope(), &ancestry, at)
+            .bytes()
+            .unwrap();
+        let signature: p256::ecdsa::Signature = issuer().sign(&bytes);
+        ancestry.signature = low_s(signature);
+        let mut response = good.clone();
+        response.ancestry = Some(ancestry);
+        response
+    };
+    // Another owner, another version, another state: never the accepted genesis.
+    let mut leaves = Vec::new();
+    for change in 0..3 {
+        let mut leaf = join_leaf(&public);
+        match change {
+            0 => leaf.owner[0] ^= 1,
+            1 => leaf.version += 1,
+            _ => leaf.state[0] ^= 1,
+        }
+        leaves.push(leaf);
+    }
+    for leaf in leaves {
+        let (frozen_leaf, record) = join_record_of(&public, leaf);
+        assert!(advance(&reissue(frozen_leaf, record)).is_err());
+    }
+    // A certified commitment that is not this leaf's, and a packet that is no leaf.
+    let (_, record) = join_record(&public);
+    assert!(advance(&reissue([6; 32], record)).is_err());
+    assert!(advance(&reissue(join_record(&public).0, vec![1, 2, 3])).is_err());
 }
 
 #[test]

@@ -100,6 +100,31 @@ pub(super) fn ancestry_body(
     }
 }
 
+/// A genesis has no frozen leaf, so the only record an issuer can attach to its
+/// acceptance is the join-time record leaf: a signed leaf of exactly the accepted
+/// genesis state (owner, version, state) whose blinded commitment is the certified
+/// `frozen_leaf`. The issuer's Ed25519 signature over it is checked when the leaf
+/// is presented, against the epoch descriptor (`Account::record_epoch_signed`).
+fn check_join_record(public: &GenesisPublic, ancestry: &AncestryResponse) -> Result<(), Error> {
+    let signed: czkp::record::SignedLeaf =
+        serde_json::from_slice(&ancestry.record).map_err(|_| Error::Invalid)?;
+    let leaf = &signed.leaf;
+    if leaf.owner != public.owner
+        || leaf.version != public.next_version
+        || leaf.state != public.next_state
+        || signed.signature.len() != 64
+    {
+        return Err(Error::Invalid);
+    }
+    let commitment = leaf
+        .commitment(&public.community, ancestry.epoch)
+        .map_err(|_| Error::Invalid)?;
+    if commitment != ancestry.frozen_leaf {
+        return Err(Error::Invalid);
+    }
+    Ok(())
+}
+
 /// Verify the issuer's state certificate and the ancestry rule for one accepted
 /// statement under the CURRENT trust. Pure: no clock, no Store, no custody.
 pub(super) fn verify_issuer_material(
@@ -116,12 +141,12 @@ pub(super) fn verify_issuer_material(
     )
     .map_err(|_| Error::Crypto)?;
     match (&trust.frontier, &response.ancestry) {
-        // The operator certifies ancestry only for an owner with a leaf in the
-        // frozen epoch; an account that starts after the freeze has none (cblc
-        // record_epoch::certify needs the owner's frozen lineage). This arm is
-        // reached ONLY from the genesis path (PreparedGenesisProof::
-        // verify_response is the sole caller). A later non-genesis caller must
-        // demand the ancestry under a frontier instead.
+        // A genesis has no frozen leaf. The operator attaches either nothing or the
+        // join-time record leaf of the accepted genesis (see `check_join_record`),
+        // and only when the community published an epoch window that contains the
+        // acceptance. This arm is reached ONLY from the genesis path
+        // (PreparedGenesisProof::verify_response is the sole caller). A later
+        // non-genesis caller must demand the ancestry under a frontier instead.
         (_, None) => Ok(()),
         (Some(frontier), Some(ancestry)) => {
             if frontier.epoch == 0
@@ -137,7 +162,8 @@ pub(super) fn verify_issuer_material(
                 &ancestry_body(public, scope, ancestry, at),
                 &ancestry.signature,
             )
-            .map_err(|_| Error::Crypto)
+            .map_err(|_| Error::Crypto)?;
+            check_join_record(public, ancestry)
         }
         // Without a frontier no ancestry may come.
         (None, Some(_)) => Err(Error::Invalid),
