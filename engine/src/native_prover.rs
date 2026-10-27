@@ -16,6 +16,7 @@ mod compression;
 #[cfg(test)]
 pub(crate) mod tests;
 mod transport;
+mod wire;
 mod worker;
 
 // The ABI, the program table, the bounds and the group checks are shared with the browser prover.

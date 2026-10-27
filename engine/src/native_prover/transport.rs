@@ -26,11 +26,15 @@ mod tests;
 pub(super) struct Request<'a> {
     pub scope: &'a czkp::ProofScope,
     pub program: super::Program,
+    #[serde(with = "super::wire")]
     pub circuit: &'a [u8],
+    #[serde(with = "super::wire")]
     pub verification_key: &'a [u8],
+    #[serde(with = "super::wire")]
     pub srs_g1: &'a [u8],
     pub srs_g1_digest: [u8; 32],
     pub num_points: u32,
+    #[serde(with = "super::wire")]
     pub srs_g2: &'a [u8],
     pub srs_g2_digest: [u8; 32],
     pub input: &'a str,

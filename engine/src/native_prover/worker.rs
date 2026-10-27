@@ -25,14 +25,18 @@ use zeroize::Zeroizing;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Request {
+pub(super) struct Request {
     scope: czkp::ProofScope,
     program: Program,
+    #[serde(with = "super::wire")]
     circuit: Vec<u8>,
+    #[serde(with = "super::wire")]
     verification_key: Vec<u8>,
+    #[serde(with = "super::wire")]
     srs_g1: Vec<u8>,
     srs_g1_digest: [u8; 32],
     num_points: u32,
+    #[serde(with = "super::wire")]
     srs_g2: Vec<u8>,
     srs_g2_digest: [u8; 32],
     input: String,
@@ -102,6 +106,29 @@ pub(super) fn backend_stage(error: &BarretenbergError) -> u8 {
         BarretenbergError::InvalidResponse(_) => 86,
         BarretenbergError::Backend(_) => 87,
         _ => 88,
+    }
+}
+
+/// How many leading points of the authenticated setup the backend needs for this key. The whole
+/// setup (2.6 million points for the account group) is authenticated by its digest, but the
+/// backend decompresses every point it is given, about 7 s even for the 2^15 wave circuit. An
+/// UltraHonk key starts with log2 of the dyadic circuit size as one 32-byte big-endian field;
+/// twice that size is the margin the browser prover pins too (2^20 points for the 2^19 update).
+/// The backend takes the compressed points in whole blocks of 4 MiB (2^17 points), so small
+/// circuits get one block. Anything that does not look like that keeps the whole setup.
+/// The backend refuses compressed points that are not a positive multiple of 4 MiB.
+const SETUP_BLOCK_POINTS: u32 = 4 * 1024 * 1024 / 32;
+
+fn setup_points(verification_key: &[u8], available: u32) -> u32 {
+    let Some((field, _)) = verification_key.split_first_chunk::<32>() else {
+        return available;
+    };
+    let (high, low) = field.split_at(31);
+    match low[0] {
+        log @ 1..=30 if high.iter().all(|byte| *byte == 0) => {
+            available.min((1u32 << (log + 1)).max(SETUP_BLOCK_POINTS))
+        }
+        _ => available,
     }
 }
 
@@ -191,8 +218,14 @@ fn prove(mut request: Request, stage: &mut u8) -> Result<Proof, Error> {
     let backend = FfiBackend::new().map_err(|_| Error::Crypto)?;
     let mut api = BarretenbergApi::new(backend);
     *stage = 72; // Authenticated original full setup.
-    api.srs_init_srs(&request.srs_g1, request.num_points, &request.srs_g2)
-        .map_err(|_| Error::Crypto)?;
+    // The full setup was authenticated above; the backend gets the prefix it can use.
+    let points = setup_points(&verification_key, request.num_points);
+    api.srs_init_srs(
+        &request.srs_g1[..points as usize * 32],
+        points,
+        &request.srs_g2,
+    )
+    .map_err(|_| Error::Crypto)?;
     *stage = 73; // Maintained proving with the original VK and settings.
     let response = api
         .circuit_prove(
@@ -302,4 +335,113 @@ fn run_at(stage: &mut u8) -> Result<(), Error> {
 pub(super) fn run() -> Result<(), super::WorkerFailure> {
     let mut stage = 64;
     run_at(&mut stage).map_err(|_| super::WorkerFailure { code: stage })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Request, setup_points};
+    use crate::native_prover::{Program, transport};
+
+    fn key(log: u8) -> Vec<u8> {
+        let mut bytes = vec![0u8; 32];
+        bytes[31] = log;
+        bytes.extend_from_slice(&[7; 64]);
+        bytes
+    }
+
+    #[test]
+    fn the_backend_gets_twice_the_circuit_size_of_the_setup() {
+        let all = 2_621_440;
+        assert_eq!(setup_points(&key(15), all), 1 << 17);
+        assert_eq!(setup_points(&key(16), all), 1 << 17);
+        assert_eq!(setup_points(&key(17), all), 1 << 18);
+        assert_eq!(setup_points(&key(18), all), 1 << 19);
+        assert_eq!(setup_points(&key(19), all), 1 << 20);
+        assert_eq!(setup_points(&key(20), all), 1 << 21);
+    }
+
+    #[test]
+    fn the_prefix_never_exceeds_the_authenticated_setup() {
+        assert_eq!(setup_points(&key(21), 2_621_440), 2_621_440);
+        assert_eq!(setup_points(&key(15), 1 << 17), 1 << 17);
+        assert_eq!(setup_points(&key(15), 1 << 15), 1 << 15);
+        assert_eq!(setup_points(&key(30), 4_194_304), 4_194_304);
+    }
+
+    #[test]
+    fn a_key_that_does_not_state_its_size_keeps_the_whole_setup() {
+        let all = 2_621_440;
+        assert_eq!(setup_points(&[], all), all);
+        assert_eq!(setup_points(&key(15)[..31], all), all);
+        assert_eq!(setup_points(&key(0), all), all);
+        assert_eq!(setup_points(&key(31), all), all);
+        let mut wide = key(15);
+        wide[30] = 1;
+        assert_eq!(setup_points(&wide, all), all);
+        wide[30] = 0;
+        wide[0] = 1;
+        assert_eq!(setup_points(&wide, all), all);
+    }
+
+    #[test]
+    fn the_frame_carries_the_blobs_unchanged_and_compactly() {
+        let scope = czkp::ProofScope {
+            circuit_digest: [1; 32],
+            verifying_key_digest: [2; 32],
+        };
+        let setup: Vec<u8> = (0..1 << 20).map(|i: u32| (i % 251) as u8).collect();
+        let frame = serde_json::to_vec(&transport::Request {
+            scope: &scope,
+            program: Program::Wave,
+            circuit: b"{\"wave\":1}",
+            verification_key: &key(15),
+            srs_g1: &setup,
+            srs_g1_digest: [3; 32],
+            num_points: 1 << 15,
+            srs_g2: &[9; 128],
+            srs_g2_digest: [4; 32],
+            input: "{}",
+            public_inputs: &[[5; 32]],
+        })
+        .unwrap();
+        assert!(frame.len() < setup.len() * 4 / 3 + 4096, "{}", frame.len());
+        let request: Request = serde_json::from_slice(&frame).unwrap();
+        assert_eq!(request.circuit, b"{\"wave\":1}");
+        assert_eq!(request.verification_key, key(15));
+        assert_eq!(request.srs_g1, setup);
+        assert_eq!(request.srs_g2, vec![9; 128]);
+        assert_eq!(request.num_points, 1 << 15);
+        assert_eq!(request.public_inputs, vec![[5; 32]]);
+    }
+
+    #[test]
+    fn a_blob_that_is_not_base64_is_refused() {
+        let scope = czkp::ProofScope {
+            circuit_digest: [1; 32],
+            verifying_key_digest: [2; 32],
+        };
+        let frame = serde_json::to_value(&transport::Request {
+            scope: &scope,
+            program: Program::Wave,
+            circuit: b"{}",
+            verification_key: &key(15),
+            srs_g1: &[],
+            srs_g1_digest: [3; 32],
+            num_points: 0,
+            srs_g2: &[9; 128],
+            srs_g2_digest: [4; 32],
+            input: "{}",
+            public_inputs: &[],
+        })
+        .unwrap();
+        assert!(serde_json::from_value::<Request>(frame.clone()).is_ok());
+        for bad in [
+            serde_json::json!([1, 2, 3]),
+            serde_json::json!("!not base64!"),
+        ] {
+            let mut changed = frame.clone();
+            changed["circuit"] = bad;
+            assert!(serde_json::from_value::<Request>(changed).is_err());
+        }
+    }
 }
