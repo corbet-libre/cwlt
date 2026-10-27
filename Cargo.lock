@@ -934,7 +934,7 @@ dependencies = [
 [[package]]
 name = "ckmg"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=main#d7a21fede659607c69bd9a36a3a3297e919717de"
+source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=main#faf375ed5057d21de1880b7f17b1cc82ebbffbdd"
 dependencies = [
  "blake3",
  "cdht",
@@ -1329,7 +1329,7 @@ dependencies = [
 [[package]]
 name = "cwlt-engine"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#75bbdd1183abb8fb92e1d313fe4155a7f8b6a7c3"
+source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#5465709996558e117dc6cecafe623a146296f80a"
 dependencies = [
  "acvm",
  "barretenberg-rs",
@@ -1767,7 +1767,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3610,7 +3610,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4174,7 +4174,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4647,7 +4647,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
