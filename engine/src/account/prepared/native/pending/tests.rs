@@ -215,12 +215,20 @@ fn frontier() -> Frontier {
     Frontier {
         epoch: 3,
         root: [5; 32],
+        issuer_key: record_issuer_key(),
     }
 }
 
+fn record_issuer() -> ed25519_dalek::SigningKey {
+    ed25519_dalek::SigningKey::from_bytes(&[19; 32])
+}
+
+fn record_issuer_key() -> [u8; 32] {
+    record_issuer().verifying_key().to_bytes()
+}
+
 /// The join-time record leaf the ledger signs for an accepted genesis: the exact
-/// genesis state under a fresh blinding. The Ed25519 signature is only checked
-/// at presentation (against the epoch descriptor), so the fixture leaves it zero.
+/// genesis state under a fresh blinding, certified with the epoch record-issuer key.
 fn join_leaf(public: &GenesisPublic) -> czkp::record::Leaf {
     czkp::record::Leaf {
         owner: public.owner,
@@ -234,10 +242,11 @@ fn join_leaf(public: &GenesisPublic) -> czkp::record::Leaf {
 
 fn join_record_of(public: &GenesisPublic, leaf: czkp::record::Leaf) -> ([u8; 32], Vec<u8>) {
     let commitment = leaf.commitment(&public.community, 3).unwrap();
-    let signed = czkp::record::SignedLeaf {
-        leaf,
-        signature: vec![0; 64],
-    };
+    let signature = record_issuer()
+        .sign(&czkp::record::certificate_bytes(&public.community, 3, &commitment).unwrap())
+        .to_bytes()
+        .to_vec();
+    let signed = czkp::record::SignedLeaf { leaf, signature };
     (commitment, serde_json::to_vec(&signed).unwrap())
 }
 
@@ -370,10 +379,12 @@ fn a_response_that_fails_any_check_never_advances_or_activates() {
         Frontier {
             epoch: 4,
             root: [5; 32],
+            issuer_key: record_issuer_key(),
         },
         Frontier {
             epoch: 3,
             root: [6; 32],
+            issuer_key: record_issuer_key(),
         },
     ] {
         assert!(advance(&good, &trust(Some(changed))).is_err());
@@ -411,6 +422,7 @@ fn a_response_that_fails_any_check_never_advances_or_activates() {
     let moved = Frontier {
         epoch: 3,
         root: [9; 32],
+        issuer_key: record_issuer_key(),
     };
     assert!(
         engine
@@ -436,6 +448,7 @@ fn a_genesis_after_the_freeze_carries_no_ancestry_and_activates_under_the_curren
     let moved = Frontier {
         epoch: 4,
         root: [9; 32],
+        issuer_key: record_issuer_key(),
     };
     for current in [live.clone(), trust(Some(moved)), trust(None)] {
         assert_eq!(
@@ -500,6 +513,67 @@ fn a_join_record_must_be_exactly_the_accepted_genesis_state() {
     let (_, record) = join_record(&public);
     assert!(advance(&reissue([6; 32], record)).is_err());
     assert!(advance(&reissue(join_record(&public).0, vec![1, 2, 3])).is_err());
+}
+
+/// The join leaf's Ed25519 certificate is verified at acceptance, against the
+/// epoch issuer key: a tampered signature, or a leaf signed under another key,
+/// is refused even with a valid ancestry signature over the certified commitment.
+#[test]
+fn a_join_record_with_a_tampered_signature_is_refused_at_acceptance() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    let live = trust(Some(frontier()));
+    let public = proof.public_genesis();
+    let at = 150;
+    let advance = |response: &AcceptedResponse| engine.advance_pending(&sent, response, &live, 102);
+    assert!(advance(&good).is_ok());
+    let reissue = |frozen_leaf: [u8; 32], record: Vec<u8>| {
+        let mut ancestry = AncestryResponse {
+            epoch: 3,
+            root: [5; 32],
+            frozen_leaf,
+            signature: [0; 64],
+            record,
+        };
+        let bytes = super::super::response::ancestry_body(&public, proof.scope(), &ancestry, at)
+            .bytes()
+            .unwrap();
+        let signature: p256::ecdsa::Signature = issuer().sign(&bytes);
+        ancestry.signature = low_s(signature);
+        let mut response = good.clone();
+        response.ancestry = Some(ancestry);
+        response
+    };
+    let (frozen_leaf, record) = join_record(&public);
+    let mut signed: czkp::record::SignedLeaf = serde_json::from_slice(&record).unwrap();
+    // A tampered Ed25519 signature over the same leaf and commitment.
+    signed.signature[0] ^= 1;
+    assert!(advance(&reissue(frozen_leaf, serde_json::to_vec(&signed).unwrap())).is_err());
+    // A leaf signed under another record-issuer key.
+    let stranger = ed25519_dalek::SigningKey::from_bytes(&[20; 32]);
+    let leaf = join_leaf(&public);
+    let commitment = leaf.commitment(&public.community, 3).unwrap();
+    let stranger_sig = stranger
+        .sign(&czkp::record::certificate_bytes(&public.community, 3, &commitment).unwrap())
+        .to_bytes()
+        .to_vec();
+    let stranger_record = serde_json::to_vec(&czkp::record::SignedLeaf {
+        leaf,
+        signature: stranger_sig,
+    })
+    .unwrap();
+    assert!(advance(&reissue(commitment, stranger_record)).is_err());
+    // A wrong epoch issuer key in the trust refuses the genuine leaf.
+    let mut wrong_trust = live.clone();
+    wrong_trust.frontier.as_mut().unwrap().issuer_key = [9; 32];
+    assert!(
+        engine
+            .advance_pending(&sent, &good, &wrong_trust, 102)
+            .is_err()
+    );
 }
 
 /// The delivered join record is offered for exactly its epoch; an acceptance

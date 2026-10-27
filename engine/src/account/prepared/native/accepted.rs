@@ -146,7 +146,8 @@ impl AcceptedAccount {
     /// `epoch` (the join-time record leaf of an account that started after the
     /// freeze), when it is exactly this account's state. `None` for every other
     /// account, epoch or retained ancestry: the caller then takes the common
-    /// download. The issuer's signature is checked at `record_epoch_signed`.
+    /// download. The issuer's signature was already checked at acceptance and is
+    /// checked again at `record_epoch_signed`.
     pub fn delivered_record_leaf(&self, epoch: u64) -> Option<czkp::record::SignedLeaf> {
         let ancestry = self.response.ancestry.as_ref()?;
         if ancestry.epoch != epoch {

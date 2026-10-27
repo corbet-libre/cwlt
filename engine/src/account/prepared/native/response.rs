@@ -17,6 +17,9 @@ pub struct Frontier {
     pub epoch: u64,
     /// Published epoch root.
     pub root: [u8; 32],
+    /// Record-epoch issuer Ed25519 key of this epoch, from the authenticated
+    /// descriptor (the join leaf's certificate is verified against it).
+    pub issuer_key: [u8; 32],
 }
 
 /// Current verified issuer material needed to check a response. The upper owner
@@ -103,9 +106,14 @@ pub(super) fn ancestry_body(
 /// A genesis has no frozen leaf, so the only record an issuer can attach to its
 /// acceptance is the join-time record leaf: a signed leaf of exactly the accepted
 /// genesis state (owner, version, state) whose blinded commitment is the certified
-/// `frozen_leaf`. The issuer's Ed25519 signature over it is checked when the leaf
-/// is presented, against the epoch descriptor (`Account::record_epoch_signed`).
-fn check_join_record(public: &GenesisPublic, ancestry: &AncestryResponse) -> Result<(), Error> {
+/// `frozen_leaf`. The issuer's Ed25519 signature over it is checked here, against
+/// the epoch issuer key, with the existing `czkp::record::verify_certificate`
+/// (the same check `Account::record_epoch_signed` runs at presentation).
+fn check_join_record(
+    public: &GenesisPublic,
+    ancestry: &AncestryResponse,
+    issuer_key: &[u8; 32],
+) -> Result<(), Error> {
     let signed: czkp::record::SignedLeaf =
         serde_json::from_slice(&ancestry.record).map_err(|_| Error::Invalid)?;
     let leaf = &signed.leaf;
@@ -122,6 +130,14 @@ fn check_join_record(public: &GenesisPublic, ancestry: &AncestryResponse) -> Res
     if commitment != ancestry.frozen_leaf {
         return Err(Error::Invalid);
     }
+    czkp::record::verify_certificate(
+        issuer_key,
+        &public.community,
+        ancestry.epoch,
+        &commitment,
+        &signed.signature,
+    )
+    .map_err(|_| Error::Crypto)?;
     Ok(())
 }
 
@@ -163,7 +179,7 @@ pub(super) fn verify_issuer_material(
                 &ancestry.signature,
             )
             .map_err(|_| Error::Crypto)?;
-            check_join_record(public, ancestry)
+            check_join_record(public, ancestry, &frontier.issuer_key)
         }
         // Without a frontier no ancestry may come.
         (None, Some(_)) => Err(Error::Invalid),
