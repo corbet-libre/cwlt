@@ -12,7 +12,7 @@ use zeroize::Zeroizing;
 mod native;
 pub use native::{
     AcceptanceBinding, AcceptedAccount, AcceptedGenesisProof, AcceptedResponse, AncestryResponse,
-    Frontier, GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, GenesisPublic, IssuerAcceptance,
+    Frontier, GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, GenesisPublic, IssuerAcceptance, JoinEpoch,
     MAX_ACCEPTED_SEALED, MAX_PENDING_SEALED, OwnerAbsence, PendingGenesisBinding,
     PreparedGenesisProof, ResponseTrust, SealedAcceptedAccount, SealedPendingGenesis,
 };

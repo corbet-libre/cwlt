@@ -200,6 +200,12 @@ fn real_binding() -> PendingGenesisBinding {
 }
 
 fn trust(frontier: Option<Frontier>) -> ResponseTrust {
+    trust_both(frontier, None)
+}
+
+/// The same trust, plus the join descriptor the operator's signed publication
+/// named for a first genesis accepted after the record freeze.
+fn trust_both(frontier: Option<Frontier>, join: Option<JoinEpoch>) -> ResponseTrust {
     ResponseTrust {
         certificate_keys: vec![czkp::issuer_keys::CertificateKeyPeriod {
             public_key: issuer_public(&issuer()).to_vec(),
@@ -208,6 +214,17 @@ fn trust(frontier: Option<Frontier>) -> ResponseTrust {
         }],
         community_identity: IDENTITY,
         frontier,
+        join,
+    }
+}
+
+/// The published epoch descriptor of the join publication: the same epoch/root
+/// the ancestry certificate carries, with the record-issuer key.
+fn join_epoch(epoch: u64, root: [u8; 32]) -> JoinEpoch {
+    JoinEpoch {
+        epoch,
+        root,
+        issuer_key: record_issuer_key(),
     }
 }
 
@@ -291,6 +308,7 @@ fn response(
         },
         certificate: low_s(certificate),
         ancestry,
+        join: None,
     }
 }
 
@@ -805,4 +823,161 @@ fn an_elapsed_state_a_is_discardable_only_on_the_operators_own_late_no_account_s
             .check_elapsed_pending(&sent, expires, &good)
             .is_err()
     );
+}
+
+/// Row 16, the fixed case: a newcomer whose first genesis is accepted after the
+/// record freeze. The community may certify the join-time record leaf only under
+/// its published epoch; its own signed material on the response names that epoch
+/// (`ResponseTrust.join`), and the acceptance advances and activates under it
+/// even though the newcomer has no frozen frontier.
+#[test]
+fn a_first_genesis_after_the_freeze_advances_under_the_published_join_descriptor() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    let live = trust_both(None, Some(join_epoch(3, [5; 32])));
+    let accepted = engine
+        .advance_pending(&sent, &good, &live, 102)
+        .expect("a join ancestry under the published descriptor advances");
+    // Activation re-verifies the stored response under the same trust.
+    assert_eq!(
+        engine
+            .activate_pending(&accepted, &live, 103)
+            .unwrap()
+            .accepted_at(),
+        150
+    );
+    // The stored response still refreshes the join record for its epoch.
+    let sealed = engine
+        .activate_pending(&accepted, &live, 103)
+        .unwrap()
+        .seal_account(&engine)
+        .unwrap();
+    let account = engine.restore_accepted_account(&sealed).unwrap();
+    assert_eq!(
+        account.delivered_record_leaf(3).unwrap().leaf.owner,
+        account.owner()
+    );
+}
+
+/// A tampered ancestry signature, or a tampered join-record signature, is refused
+/// for a join ancestry exactly as under a frozen frontier.
+#[test]
+fn a_join_ancestry_with_a_tampered_signature_is_invalid() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    let live = trust_both(None, Some(join_epoch(3, [5; 32])));
+    let advance = |response: &AcceptedResponse| engine.advance_pending(&sent, response, &live, 102);
+    assert!(advance(&good).is_ok());
+    // The issuer's P-256 signature over the ancestry transcript.
+    let mut bad = good.clone();
+    bad.ancestry.as_mut().unwrap().signature[0] ^= 1;
+    assert!(advance(&bad).is_err());
+    // The record issuer's Ed25519 signature over the join leaf.
+    let mut bad = good.clone();
+    let mut signed: czkp::record::SignedLeaf =
+        serde_json::from_slice(&bad.ancestry.as_ref().unwrap().record).unwrap();
+    signed.signature[0] ^= 1;
+    bad.ancestry.as_mut().unwrap().record = serde_json::to_vec(&signed).unwrap();
+    assert!(advance(&bad).is_err());
+    // A join leaf signed under another epoch issuer key than the descriptor's.
+    let stranger = ed25519_dalek::SigningKey::from_bytes(&[20; 32]);
+    let leaf = join_leaf(&proof.public_genesis());
+    let commitment = leaf
+        .commitment(&proof.public_genesis().community, 3)
+        .unwrap();
+    let stranger_signature = stranger
+        .sign(
+            &czkp::record::certificate_bytes(&proof.public_genesis().community, 3, &commitment)
+                .unwrap(),
+        )
+        .to_bytes()
+        .to_vec();
+    let mut bad = good.clone();
+    bad.ancestry.as_mut().unwrap().record = serde_json::to_vec(&czkp::record::SignedLeaf {
+        leaf,
+        signature: stranger_signature,
+    })
+    .unwrap();
+    assert!(advance(&bad).is_err());
+}
+
+/// The join ancestry must sit under exactly the descriptor the community
+/// publication named: another epoch, another root, or another issuer key is refused.
+#[test]
+fn a_join_ancestry_not_under_the_published_descriptor_is_invalid() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    for join in [
+        join_epoch(4, [5; 32]),
+        join_epoch(3, [6; 32]),
+        JoinEpoch {
+            epoch: 3,
+            root: [5; 32],
+            issuer_key: [9; 32],
+        },
+        JoinEpoch {
+            epoch: 0,
+            root: [5; 32],
+            issuer_key: record_issuer_key(),
+        },
+    ] {
+        assert!(
+            engine
+                .advance_pending(&sent, &good, &trust_both(None, Some(join)), 102)
+                .is_err()
+        );
+    }
+}
+
+/// Without a published descriptor no join ancestry may come: the arm stays
+/// Invalid, and no frozen frontier stands in for it.
+#[test]
+fn a_join_ancestry_without_a_published_descriptor_is_invalid() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    assert!(
+        engine
+            .advance_pending(&sent, &good, &trust_both(None, None), 102)
+            .is_err()
+    );
+}
+
+/// The pre-freeze case is unchanged: a first genesis with no ancestry advances and
+/// activates with no frontier and no join descriptor, and a join descriptor alone
+/// binds nothing (no ancestry, nothing to check).
+#[test]
+fn a_first_genesis_before_the_freeze_is_unchanged() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let fresh = response(&proof, &a.acceptance, 150, false);
+    for live in [
+        trust_both(None, None),
+        trust_both(None, Some(join_epoch(3, [5; 32]))),
+        trust(Some(frontier())),
+    ] {
+        let accepted = engine
+            .advance_pending(&sent, &fresh, &live, 102)
+            .expect("a genesis before the freeze carries no ancestry and advances");
+        assert_eq!(
+            engine
+                .activate_pending(&accepted, &live, 103)
+                .unwrap()
+                .accepted_at(),
+            150
+        );
+    }
 }

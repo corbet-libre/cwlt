@@ -22,6 +22,21 @@ pub struct Frontier {
     pub issuer_key: [u8; 32],
 }
 
+/// The published epoch descriptor a join-time ancestry sits under: the one the
+/// community's own signed material names when the operator carries that
+/// publication on the response. It is not a frozen frontier: a newcomer has no
+/// frozen leaf, so only its join-time record leaf is bound here.
+#[derive(Clone, PartialEq, Eq)]
+pub struct JoinEpoch {
+    /// Published epoch number (non-zero).
+    pub epoch: u64,
+    /// Published epoch root.
+    pub root: [u8; 32],
+    /// Record-epoch issuer Ed25519 key of this epoch, from the authenticated
+    /// descriptor (the join leaf's certificate is verified against it).
+    pub issuer_key: [u8; 32],
+}
+
 /// Current verified issuer material needed to check a response. The upper owner
 /// supplies it from the authenticated Balance publication, never from the response.
 #[derive(Clone, PartialEq, Eq)]
@@ -35,6 +50,11 @@ pub struct ResponseTrust {
     /// ancestry certificate must match it, and without one none may come. A
     /// genesis has no frozen leaf, so under a frontier its response may carry none.
     pub frontier: Option<Frontier>,
+    /// The epoch descriptor the community publication carried on the response
+    /// names, once the upper owner verified that publication with the community
+    /// ring. A first genesis accepted after the record freeze has no frontier,
+    /// so this is the only descriptor its join-time ancestry may sit under.
+    pub join: Option<JoinEpoch>,
 }
 
 /// Private epoch-ancestry certificate returned on the authenticated response.
@@ -62,6 +82,12 @@ pub struct AcceptedResponse {
     /// Epoch ancestry of an owner whose state was frozen in the material's
     /// frontier. A fresh genesis has no frozen leaf and carries none.
     pub ancestry: Option<AncestryResponse>,
+    /// The descriptor this response was ACCEPTED under when it was not the frozen
+    /// frontier (a first genesis after the record freeze). Stored with the
+    /// verified response so activation re-checks the same descriptor; it is never
+    /// re-read from the response, and it grants nothing at activation that the
+    /// ancestry certificate does not already prove.
+    pub join: Option<JoinEpoch>,
 }
 
 /// The accepted-state body czkp encodes and verifies, for the retained statement.
@@ -164,26 +190,65 @@ pub(super) fn verify_issuer_material(
         // (PreparedGenesisProof::verify_response is the sole caller). A later
         // non-genesis caller must demand the ancestry under a frontier instead.
         (_, None) => Ok(()),
-        (Some(frontier), Some(ancestry)) => {
-            if frontier.epoch == 0
-                || ancestry.epoch != frontier.epoch
-                || ancestry.root != frontier.root
-                || ancestry.record.is_empty()
-                || ancestry.record.len() > MAX_RECORD
-            {
-                return Err(Error::Invalid);
-            }
-            czkp::issuer_keys::verify_ancestry(
+        (Some(frontier), Some(ancestry)) => check_ancestry_under(
+            public,
+            scope,
+            response,
+            ancestry,
+            &trust.certificate_keys,
+            &frontier.epoch,
+            &frontier.root,
+            &frontier.issuer_key,
+        ),
+        // Without a frozen frontier the ONLY descriptor a join-time ancestry may sit
+        // under is the one the community's own signed publication named for this
+        // response (filled by the upper owner after it verified that publication).
+        // Without it the pair stays Invalid, exactly as before.
+        (None, Some(ancestry)) => match &trust.join {
+            Some(join) => check_ancestry_under(
+                public,
+                scope,
+                response,
+                ancestry,
                 &trust.certificate_keys,
-                &ancestry_body(public, scope, ancestry, at),
-                &ancestry.signature,
-            )
-            .map_err(|_| Error::Crypto)?;
-            check_join_record(public, ancestry, &frontier.issuer_key)
-        }
-        // Without a frontier no ancestry may come.
-        (None, Some(_)) => Err(Error::Invalid),
+                &join.epoch,
+                &join.root,
+                &join.issuer_key,
+            ),
+            None => Err(Error::Invalid),
+        },
     }
+}
+
+/// One ancestry certificate under one published epoch descriptor: the exact
+/// epoch and root, the issuer's signature over the certified commitment, and the
+/// join-time record leaf under that epoch's record-issuer key.
+fn check_ancestry_under(
+    public: &GenesisPublic,
+    scope: &czkp::ProofScope,
+    response: &AcceptedResponse,
+    ancestry: &AncestryResponse,
+    certificate_keys: &[czkp::issuer_keys::CertificateKeyPeriod],
+    epoch: &u64,
+    root: &[u8; 32],
+    issuer_key: &[u8; 32],
+) -> Result<(), Error> {
+    let at = response.issuer.accepted_at;
+    if *epoch == 0
+        || ancestry.epoch != *epoch
+        || ancestry.root != *root
+        || ancestry.record.is_empty()
+        || ancestry.record.len() > MAX_RECORD
+    {
+        return Err(Error::Invalid);
+    }
+    czkp::issuer_keys::verify_ancestry(
+        certificate_keys,
+        &ancestry_body(public, scope, ancestry, at),
+        &ancestry.signature,
+    )
+    .map_err(|_| Error::Crypto)?;
+    check_join_record(public, ancestry, issuer_key)
 }
 
 impl AcceptedResponse {
@@ -191,15 +256,23 @@ impl AcceptedResponse {
         w.u64(self.issuer.accepted_at);
         w.bytes(&self.issuer.signature);
         w.bytes(&self.certificate);
+        // Marker 1 keeps the original ancestry-only layout readable by this
+        // version; marker 2 appends the join descriptor a first genesis after the
+        // record freeze was accepted under.
         match &self.ancestry {
             None => w.bytes(&[0]),
             Some(a) => {
-                w.bytes(&[1]);
+                w.bytes(&[if self.join.is_some() { 2 } else { 1 }]);
                 w.u64(a.epoch);
                 w.bytes(&a.root);
                 w.bytes(&a.frozen_leaf);
                 w.bytes(&a.signature);
                 w.var(&a.record)?;
+                if let Some(join) = &self.join {
+                    w.u64(join.epoch);
+                    w.bytes(&join.root);
+                    w.bytes(&join.issuer_key);
+                }
             }
         }
         Ok(())
@@ -209,15 +282,27 @@ impl AcceptedResponse {
         let accepted_at = r.u64()?;
         let signature = r.array()?;
         let certificate = r.array()?;
-        let ancestry = match r.array::<1>()?[0] {
-            0 => None,
-            1 => Some(AncestryResponse {
-                epoch: r.u64()?,
-                root: r.array()?,
-                frozen_leaf: r.array()?,
-                signature: r.array()?,
-                record: r.var(MAX_RECORD)?.to_vec(),
-            }),
+        let (ancestry, join) = match r.array::<1>()?[0] {
+            0 => (None, None),
+            marker @ (1 | 2) => {
+                let ancestry = AncestryResponse {
+                    epoch: r.u64()?,
+                    root: r.array()?,
+                    frozen_leaf: r.array()?,
+                    signature: r.array()?,
+                    record: r.var(MAX_RECORD)?.to_vec(),
+                };
+                let join = if marker == 2 {
+                    Some(JoinEpoch {
+                        epoch: r.u64()?,
+                        root: r.array()?,
+                        issuer_key: r.array()?,
+                    })
+                } else {
+                    None
+                };
+                (Some(ancestry), join)
+            }
             _ => return Err(Error::Crypto),
         };
         Ok(Self {
@@ -227,6 +312,7 @@ impl AcceptedResponse {
             },
             certificate,
             ancestry,
+            join,
         })
     }
 }

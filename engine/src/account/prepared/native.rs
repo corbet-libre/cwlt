@@ -17,7 +17,7 @@ pub use pending::{
     GENESIS_DISCARD_COMMIT_MARGIN_SECONDS, MAX_PENDING_SEALED, OwnerAbsence, PendingGenesisBinding,
     SealedPendingGenesis,
 };
-pub use response::{AcceptedResponse, AncestryResponse, Frontier, ResponseTrust};
+pub use response::{AcceptedResponse, AncestryResponse, Frontier, JoinEpoch, ResponseTrust};
 #[cfg(all(test, feature = "native-prover", not(target_arch = "wasm32")))]
 mod tests;
 

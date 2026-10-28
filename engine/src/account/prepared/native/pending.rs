@@ -486,7 +486,13 @@ impl Engine {
         }
         binding.extended_acceptance_digest =
             Some(proof.verify_response(&binding.acceptance, response, trust)?);
-        binding.response = Some(response.clone());
+        // An accepted join-time ancestry is admitted under the descriptor the
+        // community publication named, never under a frozen frontier: store exactly
+        // that descriptor with the verified response so activation re-checks the
+        // same authority instead of inventing one.
+        let mut accepted = response.clone();
+        accepted.join = response.ancestry.as_ref().and_then(|_| trust.join.clone());
+        binding.response = Some(accepted);
         proof.seal_state(self, &binding)
     }
 

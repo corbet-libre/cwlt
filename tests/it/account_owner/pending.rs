@@ -77,6 +77,7 @@ fn trust() -> ResponseTrust {
         }],
         community_identity: IDENTITY,
         frontier: None,
+        join: None,
     }
 }
 
