@@ -107,13 +107,13 @@ impl Engine {
         scope: &str,
         operation: [u8; 32],
     ) -> Result<AccountKey, Error> {
-        if operation == [0; 32] || !self.sealing.matches_context(scope.as_bytes()) {
+        if operation == [0; 32] || !self.account_sealing.matches_context(scope.as_bytes()) {
             return Err(Error::Invalid);
         }
         Ok(AccountKey {
             key: SigningKey::try_generate().map_err(|_| Error::Crypto)?,
             seed: self.seed.clone(),
-            binding: Arc::clone(&self.sealing),
+            binding: Arc::clone(&self.account_sealing),
             scope: scope.into(),
             operation,
         })
@@ -125,16 +125,16 @@ impl Engine {
         sealed: &SealedAccountKey,
         scope: &str,
     ) -> Result<AccountKey, Error> {
-        if !self.sealing.matches_context(scope.as_bytes()) {
+        if !self.account_sealing.matches_context(scope.as_bytes()) {
             return Err(Error::Crypto);
         }
         let offset = MAGIC.len();
         let nonce: [u8; 24] = sealed.0[offset..offset + 24]
             .try_into()
             .map_err(|_| Error::Crypto)?;
-        let aad = [MAGIC, self.sealing.context.as_slice()].concat();
+        let aad = [MAGIC, self.account_sealing.context.as_slice()].concat();
         let plaintext = Zeroizing::new(
-            self.sealing
+            self.account_sealing
                 .cipher
                 .decrypt(
                     &XNonce::from(nonce),
@@ -155,7 +155,7 @@ impl Engine {
         Ok(AccountKey {
             key: SigningKey::from_slice(&plaintext[65..97]).map_err(|_| Error::Crypto)?,
             seed: self.seed.clone(),
-            binding: Arc::clone(&self.sealing),
+            binding: Arc::clone(&self.account_sealing),
             scope: scope.into(),
             operation,
         })
@@ -172,7 +172,9 @@ impl AccountKey {
     /// DurableAccountOwner, after actual receipt and freshly authorized Keys Use.
     pub fn projection(&self, engine: &Engine) -> Result<Projection, Error> {
         if self.seed[..] != engine.seed[..]
-            || !engine.sealing.matches_context(self.scope.as_bytes())
+            || !engine
+                .account_sealing
+                .matches_context(self.scope.as_bytes())
         {
             return Err(Error::Crypto);
         }
@@ -196,7 +198,9 @@ impl AccountKey {
         digest: &[u8; 32],
     ) -> Result<[u8; 64], Error> {
         if self.seed[..] != engine.seed[..]
-            || !engine.sealing.matches_context(self.scope.as_bytes())
+            || !engine
+                .account_sealing
+                .matches_context(self.scope.as_bytes())
         {
             return Err(Error::Crypto);
         }
@@ -321,10 +325,10 @@ mod tests {
         let sealed = key.seal().unwrap();
         let offset = MAGIC.len();
         let nonce: [u8; 24] = sealed.0[offset..offset + 24].try_into().unwrap();
-        let aad = [MAGIC, engine.sealing.context.as_slice()].concat();
+        let aad = [MAGIC, engine.account_sealing.context.as_slice()].concat();
         let plaintext = Zeroizing::new(
             engine
-                .sealing
+                .account_sealing
                 .cipher
                 .decrypt(
                     &XNonce::from(nonce),
@@ -343,7 +347,7 @@ mod tests {
                 malformed[33..65].fill(0);
             }
             let encrypted = engine
-                .sealing
+                .account_sealing
                 .cipher
                 .encrypt(
                     &XNonce::from(nonce),

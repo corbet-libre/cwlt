@@ -66,12 +66,18 @@ impl std::error::Error for Error {}
 /// ```
 pub struct Engine {
     seed: Zeroizing<[u8; 32]>,
+    // Seals every private state format (engine, pending, accepted, account witness).
     sealing: Arc<sealing::Binding>,
+    // Opening only, newest first: predecessor state keys. They never seal.
+    opening: Arc<[sealing::Binding]>,
+    // Seals the account-key capsule only.
+    account_sealing: Arc<sealing::Binding>,
     record: Option<record::State>,
 }
 
 impl Engine {
-    /// Bind the original purpose seed and distinct sealing key exactly once.
+    /// Bind the original purpose seed and ONE sealing key, for the private state and
+    /// the account-key capsule alike, exactly once; nothing older opens.
     /// Both caller buffers are wiped on every return, including invalid context.
     /// Legitimate member seeds/keys are supplied inside Keys, never by Wallet.
     pub fn from_seed_and_sealing_key(
@@ -79,14 +85,43 @@ impl Engine {
         key: &mut [u8; 32],
         wallet_context: &[u8],
     ) -> Result<Self, Error> {
+        let mut account = Zeroizing::new(*key);
+        Self::from_seed_and_sealing_keys(seed, key, &mut [], &mut account, wallet_context)
+    }
+
+    /// Bind the original purpose seed and two distinct sealing keys exactly once.
+    /// `state` seals every private state format; Keys derives it from the member's
+    /// current epoch root, so a device removal rotates it. `opening` holds the
+    /// predecessor state keys, newest first: they only open, and a reopened state
+    /// seals under `state` again, out of a removed device's reach. `account` seals the
+    /// account-key capsule, which guards a stable scalar and so never rotates.
+    /// Every caller buffer is wiped on every return, including invalid context.
+    pub fn from_seed_and_sealing_keys(
+        seed: &mut [u8; 32],
+        state: &mut [u8; 32],
+        opening: &mut [[u8; 32]],
+        account: &mut [u8; 32],
+        wallet_context: &[u8],
+    ) -> Result<Self, Error> {
         let owned_seed = Zeroizing::new(*seed);
-        let owned_key = Zeroizing::new(*key);
+        let owned_state = Zeroizing::new(*state);
+        let owned_opening = Zeroizing::new(opening.to_vec());
+        let owned_account = Zeroizing::new(*account);
         seed.zeroize();
-        key.zeroize();
-        let sealing = sealing::Binding::new(&owned_key, wallet_context)?;
+        state.zeroize();
+        opening.iter_mut().for_each(Zeroize::zeroize);
+        account.zeroize();
+        let sealing = sealing::Binding::new(&owned_state, wallet_context)?;
+        let opening = owned_opening
+            .iter()
+            .map(|key| sealing::Binding::new(key, wallet_context))
+            .collect::<Result<Vec<_>, _>>()?;
+        let account_sealing = sealing::Binding::new(&owned_account, wallet_context)?;
         Ok(Self {
             seed: owned_seed,
             sealing: Arc::new(sealing),
+            opening: opening.into(),
+            account_sealing: Arc::new(account_sealing),
             record: None,
         })
     }

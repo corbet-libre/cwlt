@@ -102,18 +102,8 @@ impl Engine {
         let nonce: [u8; NONCE] = sealed.0[offset..offset + NONCE]
             .try_into()
             .map_err(|_| Error::Crypto)?;
-        let plaintext = Zeroizing::new(
-            self.sealing
-                .cipher
-                .decrypt(
-                    &XNonce::from(nonce),
-                    Payload {
-                        msg: &sealed.0[offset + NONCE..],
-                        aad: &self.sealing.context,
-                    },
-                )
-                .map_err(|_| Error::Crypto)?,
-        );
+        let plaintext =
+            self.open_state(&nonce, &sealed.0[offset + NONCE..], &self.sealing.context)?;
         if plaintext.len() < PLAIN || plaintext[1..PLAIN] != self.seed[..] {
             return Err(Error::Crypto);
         }
@@ -130,7 +120,30 @@ impl Engine {
         Ok(Self {
             seed: self.seed.clone(),
             sealing: Arc::clone(&self.sealing),
+            opening: Arc::clone(&self.opening),
+            account_sealing: Arc::clone(&self.account_sealing),
             record,
         })
+    }
+
+    /// Authenticate private state sealed under the current state key or, after a key
+    /// rotation, under one of the opening-only predecessor keys. Every format seals
+    /// under the current key only, so the next save leaves the predecessors' reach.
+    pub(crate) fn open_state(
+        &self,
+        nonce: &[u8; NONCE],
+        msg: &[u8],
+        aad: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, Error> {
+        std::iter::once(&*self.sealing)
+            .chain(self.opening.iter())
+            .find_map(|binding| {
+                binding
+                    .cipher
+                    .decrypt(&XNonce::from(*nonce), Payload { msg, aad })
+                    .ok()
+            })
+            .map(Zeroizing::new)
+            .ok_or(Error::Crypto)
     }
 }

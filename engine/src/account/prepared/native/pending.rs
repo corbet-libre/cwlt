@@ -387,18 +387,7 @@ impl Engine {
             .try_into()
             .map_err(|_| Error::Crypto)?;
         let aad = [MAGIC, &[state], self.sealing.context.as_slice()].concat();
-        let plaintext = Zeroizing::new(
-            self.sealing
-                .cipher
-                .decrypt(
-                    &XNonce::from(nonce),
-                    Payload {
-                        msg: &sealed.0[offset + NONCE..],
-                        aad: &aad,
-                    },
-                )
-                .map_err(|_| Error::Crypto)?,
-        );
+        let plaintext = self.open_state(&nonce, &sealed.0[offset + NONCE..], &aad)?;
         let mut r = Reader(&plaintext);
         let version = r.array::<1>()?[0];
         let seed: Field = r.array()?;
