@@ -981,3 +981,103 @@ fn a_first_genesis_before_the_freeze_is_unchanged() {
         );
     }
 }
+
+/// Review M4: a stored join is the descriptor this acceptance was ADMITTED under.
+/// When the device's material later gains a frozen frontier of another epoch, the
+/// activation still re-checks the stored response under that stored descriptor
+/// (its epoch is the ancestry's), not under the newer frontier, which it can never
+/// match.
+#[test]
+fn a_stored_join_activates_after_the_frontier_moved_to_another_epoch() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    let accepted = engine
+        .advance_pending(
+            &sent,
+            &good,
+            &trust_both(None, Some(join_epoch(3, [5; 32]))),
+            102,
+        )
+        .unwrap();
+    let moved = Frontier {
+        epoch: 4,
+        root: [6; 32],
+        issuer_key: record_issuer_key(),
+    };
+    for live in [
+        trust_both(Some(moved.clone()), Some(join_epoch(3, [5; 32]))),
+        // The stored descriptor is read from the sealed row, not from the trust.
+        trust_both(Some(moved.clone()), None),
+    ] {
+        assert_eq!(
+            engine
+                .activate_pending(&accepted, &live, 103)
+                .expect("the stored join decides for its own epoch")
+                .accepted_at(),
+            150
+        );
+    }
+}
+
+/// A frontier of the SAME epoch that disagrees with the stored join is a fork of
+/// that epoch's descriptor: the activation refuses it instead of choosing one.
+#[test]
+fn a_stored_join_that_a_frontier_of_its_epoch_contradicts_is_invalid() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let good = response(&proof, &a.acceptance, 150, true);
+    let accepted = engine
+        .advance_pending(
+            &sent,
+            &good,
+            &trust_both(None, Some(join_epoch(3, [5; 32]))),
+            102,
+        )
+        .unwrap();
+    for fork in [
+        Frontier {
+            epoch: 3,
+            root: [6; 32],
+            issuer_key: record_issuer_key(),
+        },
+        Frontier {
+            epoch: 3,
+            root: [5; 32],
+            issuer_key: [9; 32],
+        },
+    ] {
+        assert!(
+            engine
+                .activate_pending(&accepted, &trust(Some(fork)), 103)
+                .is_err()
+        );
+    }
+}
+
+/// Only a sealed row carries a stored join: an advance never takes one from the
+/// response it is handed, so a caller cannot smuggle a descriptor past the
+/// publication the upper owner verified.
+#[test]
+fn an_advance_never_takes_a_join_from_the_response() {
+    let (engine, context) = super::super::tests::fixture();
+    let proof = proven(&engine, &context);
+    let sent = proof.seal_pending(&engine, &real_binding()).unwrap();
+    let (_, a) = engine.restore_pending_genesis(&sent, 102).unwrap();
+    let mut smuggled = response(&proof, &a.acceptance, 150, true);
+    smuggled.join = Some(join_epoch(3, [5; 32]));
+    for live in [
+        trust_both(None, None),
+        trust_both(None, Some(join_epoch(3, [5; 32]))),
+    ] {
+        assert!(
+            engine
+                .advance_pending(&sent, &smuggled, &live, 102)
+                .is_err()
+        );
+    }
+}

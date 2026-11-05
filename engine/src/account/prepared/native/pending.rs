@@ -481,7 +481,9 @@ impl Engine {
         now: u64,
     ) -> Result<SealedPendingGenesis, Error> {
         let (proof, mut binding) = self.restore_pending_genesis(sealed, now)?;
-        if binding.extended_acceptance_digest.is_some() {
+        // A join descriptor is stored only by this advance, from the trust the upper
+        // owner verified; a response that already names one is not a delivered answer.
+        if binding.extended_acceptance_digest.is_some() || response.join.is_some() {
             return Err(Error::Invalid);
         }
         binding.extended_acceptance_digest =

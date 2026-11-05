@@ -182,15 +182,46 @@ pub(super) fn verify_issuer_material(
         &response.certificate,
     )
     .map_err(|_| Error::Crypto)?;
-    match (&trust.frontier, &response.ancestry) {
-        // A genesis has no frozen leaf. The operator attaches either nothing or the
-        // join-time record leaf of the accepted genesis (see `check_join_record`),
-        // and only when the community published an epoch window that contains the
-        // acceptance. This arm is reached ONLY from the genesis path
-        // (PreparedGenesisProof::verify_response is the sole caller). A later
-        // non-genesis caller must demand the ancestry under a frontier instead.
-        (_, None) => Ok(()),
-        (Some(frontier), Some(ancestry)) => check_ancestry_under(
+    // A genesis has no frozen leaf. The operator attaches either nothing or the
+    // join-time record leaf of the accepted genesis (see `check_join_record`), and
+    // only when the community published an epoch window that contains the
+    // acceptance. This rule is reached ONLY from the genesis path
+    // (PreparedGenesisProof::verify_response is the sole caller). A later
+    // non-genesis caller must demand the ancestry under a frontier instead.
+    let Some(ancestry) = &response.ancestry else {
+        return Ok(());
+    };
+    // A STORED join is the descriptor this acceptance was admitted under: the
+    // advance verified the ancestry under it and sealed it with the response (an
+    // advance never takes one from its caller). Activation re-checks the stored
+    // response under exactly that descriptor for its own epoch, also after the
+    // material gained a frontier of a later epoch that this ancestry can never
+    // match. A frontier of the SAME epoch must be the same descriptor: a fork of
+    // one epoch is refused, never resolved by choosing one side.
+    if let Some(join) = response
+        .join
+        .as_ref()
+        .filter(|join| join.epoch == ancestry.epoch)
+    {
+        if trust.frontier.as_ref().is_some_and(|frontier| {
+            frontier.epoch == join.epoch
+                && (frontier.root != join.root || frontier.issuer_key != join.issuer_key)
+        }) {
+            return Err(Error::Invalid);
+        }
+        return check_ancestry_under(
+            public,
+            scope,
+            response,
+            ancestry,
+            &trust.certificate_keys,
+            &join.epoch,
+            &join.root,
+            &join.issuer_key,
+        );
+    }
+    match &trust.frontier {
+        Some(frontier) => check_ancestry_under(
             public,
             scope,
             response,
@@ -204,7 +235,7 @@ pub(super) fn verify_issuer_material(
         // under is the one the community's own signed publication named for this
         // response (filled by the upper owner after it verified that publication).
         // Without it the pair stays Invalid, exactly as before.
-        (None, Some(ancestry)) => match &trust.join {
+        None => match &trust.join {
             Some(join) => check_ancestry_under(
                 public,
                 scope,
