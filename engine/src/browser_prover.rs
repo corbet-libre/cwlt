@@ -313,6 +313,48 @@ impl BrowserProver {
         abi::public_only(self.config.program, &self.abi, input)
     }
 
+    /// The circuit member this prover runs.
+    pub fn program(&self) -> Program {
+        self.config.program
+    }
+
+    /// Prove one account update built from the witness (`Account::reserve`, `activate`,
+    /// `settle`, ...), the browser counterpart of `NativeProver::prepare_update`. Only a prover
+    /// of the `update` member accepts it. The private input goes to the Web Worker once and is
+    /// wiped here; only a proof that carries the public inputs this engine derived comes back.
+    pub async fn prove_update(
+        &self,
+        input: &crate::account::UpdateInput,
+    ) -> Result<Vec<u8>, Error> {
+        if self.config.program != Program::Update {
+            return Err(Error::Invalid);
+        }
+        let json = input.to_json()?;
+        let public = self.public_inputs(&json)?;
+        Ok(self.prove(json, public).await?.proof)
+    }
+
+    /// Prove one `wave` (reservation) or `outcome` (settled slot) evidence, the browser
+    /// counterpart of `NativeProver::prepare_wave_evidence`; the counterpart checks it with its
+    /// `WaveVerifier`. The prover's member must match the evidence: `wave` for a reservation,
+    /// `outcome` for a settled slot.
+    pub async fn prove_wave_evidence(
+        &self,
+        evidence: &crate::account::Evidence,
+    ) -> Result<Vec<u8>, Error> {
+        let expected = if evidence.is_outcome() {
+            Program::Outcome
+        } else {
+            Program::Wave
+        };
+        if self.config.program != expected {
+            return Err(Error::Invalid);
+        }
+        let json = evidence.input_json()?;
+        let public = self.public_inputs(&json)?;
+        Ok(self.prove(json, public).await?.proof)
+    }
+
     fn check(&self) -> Result<(), Error> {
         if self.cancelled.load(Ordering::Acquire) {
             Err(Error::Crypto)
