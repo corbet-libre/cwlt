@@ -94,7 +94,8 @@ impl Jobs {
     }
     /// The bytes to store in the member's encrypted Store.
     pub fn encode(&self) -> Vec<u8> {
-        serde_json::to_vec(self).expect("jobs encode as JSON")
+        serde_json::to_vec(self)
+            .expect("Jobs derives Serialize over JSON-native types only; to_vec cannot fail")
     }
     /// One job by identifier.
     pub fn get(&self, id: &[u8; 32]) -> Option<&Job> {
