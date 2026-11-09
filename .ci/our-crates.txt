@@ -73,6 +73,7 @@ cvlt
 cvtl
 cwlt
 cwlt-engine
+cwlt-wasm
 cwst
 cwvs
 cxch
