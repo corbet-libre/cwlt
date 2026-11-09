@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from engine_identity import verified_engine_pair
 
-FIRST_PARTY = re.compile(r"^(?:git\+)?https://git\.corbet\.ch/(?:corbet-(?:foss|libs)|cmtymeet)/")
+FIRST_PARTY = re.compile(r"^(?:git\+)?https://git\.corbet\.ch/(?:corbet-(?:foss|libs|libre|fsl)|cmty(?:meet|mt))/")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 # Every first-party repository converged on main; no owner keeps another line.
 V01_OWNERS = {}
@@ -98,7 +98,25 @@ def self_test():
     check_manifest({'workspace': {'dependencies': {'alias': {'git': repo, 'package': 'example', 'branch': 'main'}}}})
 
 
+def check_first_party_orgs():
+    """Every current owner resolves on the canonical forge; github.com keeps its former owners."""
+    for owner in ('corbet-foss', 'corbet-libs', 'corbet-libre', 'corbet-fsl',
+                  'cmtymeet', 'cmtymt'):
+        url = f'https://git.corbet.ch/{owner}/example'
+        if not FIRST_PARTY.match(url):
+            raise AssertionError(f'First-party owner rejected: {url}')
+    for url in ('https://git.corbet.ch.evil.test/corbet-libre/example',
+                'https://user@git.corbet.ch/corbet-libre/example',
+                'https://git.corbet.ch:443/corbet-libre/example',
+                'https://git.corbet.ch/corbet-libre.evil/example',
+                'https://github.com/corbet-libre/example',
+                'https://github.com/corbet-fsl/example',
+                'https://github.com/cmtymt/example'):
+        if FIRST_PARTY.match(url):
+            raise AssertionError(f'Invalid first-party owner accepted: {url}')
+
 if __name__ == '__main__':
+    check_first_party_orgs()
     parser = argparse.ArgumentParser()
     parser.add_argument('--self-test', action='store_true')
     parser.add_argument('--manifest-only', action='store_true')
