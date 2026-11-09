@@ -797,7 +797,7 @@ dependencies = [
 [[package]]
 name = "cbcn"
 version = "0.1.0"
-source = "git+https://git.corbet.ch/corbet-foss/cbcn.git?branch=main#f53584d34c74c341555ca49b3807e8fdeb8bcb0f"
+source = "git+https://git.corbet.ch/corbet-libre/cbcn.git?branch=main#03f35a04f80d80ad4414d46fa0c244d9c8e7bf31"
 dependencies = [
  "csgn",
  "serde",
@@ -817,7 +817,7 @@ dependencies = [
 [[package]]
 name = "cdht"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cdht.git?branch=main#36d40ec5161f18add1a9cbf27d585788263eafb3"
+source = "git+https://git.corbet.ch/corbet-libre/cdht.git?branch=main#a07663e051baeef7afc4d5f5c177332bbf647121"
 dependencies = [
  "blake3",
  "capnp",
@@ -934,14 +934,14 @@ dependencies = [
 [[package]]
 name = "ckmg"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/ckmg.git?branch=main#e4cf1ae437f57320c3ed330d41980c6cfc222c4d"
+source = "git+https://git.corbet.ch/corbet-libre/ckmg.git?branch=main#64e0c99d9ff286be2b44d938b8507efd078e5e12"
 dependencies = [
  "blake3",
  "cdht",
  "chacha20",
  "chacha20poly1305",
  "cpsd",
- "cwlt-engine 0.0.0 (git+https://git.corbet.ch/corbet-foss/cwlt?branch=main)",
+ "cwlt-engine 0.0.0 (git+https://git.corbet.ch/corbet-foss/cwlt.git?branch=main)",
  "data-encoding",
  "ed25519-dalek",
  "getrandom 0.4.3",
@@ -1073,7 +1073,7 @@ dependencies = [
 [[package]]
 name = "cpsd"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cpsd?branch=main#56636a670b8390dcca0840f74aea4cb4f53859be"
+source = "git+https://git.corbet.ch/corbet-libre/cpsd.git?branch=main#321233d80d1e68a3969495b9224616816bd31cd0"
 dependencies = [
  "ark-bls12-381",
  "ark-ec 0.4.2",
@@ -1210,7 +1210,7 @@ dependencies = [
 [[package]]
 name = "csgn"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/csgn?branch=main#2df86cef67d3e9540cb59f064a763912959ac01f"
+source = "git+https://git.corbet.ch/corbet-libre/csgn.git?branch=main#bb79c367b2878949d8ae6739fcc4709490212824"
 dependencies = [
  "ciborium-ll",
  "coset",
@@ -1260,7 +1260,7 @@ dependencies = [
 [[package]]
 name = "cvfy"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cvfy.git?branch=main#f8c4c3b3b32e8e7f1a298c5479aabc4fb27da7e7"
+source = "git+https://git.corbet.ch/corbet-foss/cvfy.git?branch=main#2b4999d198c3dd5d7a1b05dba1489db708e13afa"
 dependencies = [
  "czkp",
  "data-encoding",
@@ -1279,7 +1279,7 @@ dependencies = [
  "cpsd",
  "csgn",
  "cvfy",
- "cwlt-engine 0.0.0 (git+https://git.corbet.ch/corbet-foss/cwlt?branch=main)",
+ "cwlt-engine 0.0.0 (git+https://git.corbet.ch/corbet-foss/cwlt.git?branch=main)",
  "cwst",
  "czkp",
  "ed25519-dalek",
@@ -1329,7 +1329,7 @@ dependencies = [
 [[package]]
 name = "cwlt-engine"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwlt?branch=main#f90e13aff86f3ba379cbe4c9ecfd152381bc19ce"
+source = "git+https://git.corbet.ch/corbet-foss/cwlt.git?branch=main#7aae6fc97e6891f2cefa2a435abe933b125770c1"
 dependencies = [
  "acvm",
  "barretenberg-rs",
@@ -1355,7 +1355,7 @@ dependencies = [
 [[package]]
 name = "cwst"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/cwst.git?branch=main#07efbb13f78391e96103254182f3b0bb550c7f9f"
+source = "git+https://git.corbet.ch/corbet-foss/cwst.git?branch=main#b6534ca9ae41b394ac9b6823208c34e2627222f5"
 dependencies = [
  "atomicwrites",
  "blake3",
@@ -1378,7 +1378,7 @@ dependencies = [
 [[package]]
 name = "czkp"
 version = "0.0.0"
-source = "git+https://git.corbet.ch/corbet-foss/czkp?branch=main#9feb3d816e5150b6b21244e66b9d044b7dce1b88"
+source = "git+https://git.corbet.ch/corbet-foss/czkp.git?branch=main#c89b7b5d035aa9db1186bdce6d7f5200e3c01982"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.6.0",
