@@ -3,8 +3,11 @@
 # pins; internal crates are advanced here, in CI and in the integration workspace, never by lock sweeps).
 # The list of our crates is .ci/our-crates.txt, a generated copy of cmeet's ci/our-crates.txt.
 # Generated copy of cmeet ci/update-our-crates.sh; change it there and run `cargo xtask ci-sync`.
+# Usage: update-our-crates.sh [REPO]   REPO defaults to the repository this copy lives in. The fixture builders of
+# cmeet (ci/test-env, xtask) pass the checkout they build, so they run cmeet's current script, never the possibly
+# older copy inside that checkout (2026-11-07: cmsg's copy still passed bare names; `-p cmbl` failed "ambiguous").
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "${1:-$(dirname "${BASH_SOURCE[0]}")/..}"
 [ -f Cargo.lock ] || exit 0
 [ -f .ci/our-crates.txt ] || { echo 'update-our-crates: .ci/our-crates.txt missing' >&2; exit 1; }
 args=()
