@@ -1,0 +1,38 @@
+[package]
+name = "cwlt-wasm"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Wallet: the general client-side holder that keeps openings and creates proofs"
+license = "LGPL-3.0-only WITH LGPL-3.0-linking-exception"
+repository = "https://git.corbet.ch/corbet-foss/cwlt"
+readme = "../README.md"
+publish = false
+
+# The browser build of cwlt (wasm-pack, `--out-name cwlt`). The cdylib lives here so that cwlt itself is an rlib:
+# cargo writes the rlib of a path crate that is also a cdylib without a hash, and every feature set of it then
+# overwrote the one file in a shared target directory.
+[lib]
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+# Every cwlt feature, forwarded: `wasm-pack build wasm -- --features <f>` selects the same build as before the split.
+[features]
+default = []
+passport = ["cwlt/passport"]
+record = ["cwlt/record"]
+account = ["cwlt/account"]
+native-prover = ["cwlt/native-prover"]
+browser-prover = ["cwlt/browser-prover"]
+wave = ["cwlt/wave"]
+beacon = ["cwlt/beacon"]
+native-verifier = ["cwlt/native-verifier"]
+schema = ["cwlt/schema"]
+
+[dependencies]
+cwlt = { path = ".." }

@@ -1353,6 +1353,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cwlt-wasm"
+version = "0.0.0"
+dependencies = [
+ "cwlt",
+]
+
+[[package]]
 name = "cwst"
 version = "0.0.0"
 source = "git+https://git.corbet.ch/corbet-foss/cwst.git?branch=main#b6534ca9ae41b394ac9b6823208c34e2627222f5"

@@ -1,5 +1,5 @@
 [workspace]
-members = ["engine"]
+members = ["engine", "wasm"]
 resolver = "3"
 
 [package]
@@ -13,9 +13,6 @@ repository = "https://git.corbet.ch/corbet-foss/cwlt.git"
 readme = "README.md"
 publish = false
 include = ["Cargo.toml", "src/**", "README.md", "LICENSE", "LICENSE.md", "LICENSES/LGPL-3.0-only.txt", "LICENSES/LGPL-3.0-linking-exception.txt", "LICENSES/GPL-3.0-only.txt"]
-
-[lib]
-crate-type = ["rlib", "cdylib"]
 
 [lints.rust]
 unsafe_code = "forbid"
