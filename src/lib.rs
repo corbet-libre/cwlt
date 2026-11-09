@@ -2,6 +2,8 @@
 //!
 //! Private member-side witness planning. Every result still needs a real proof
 //! of the independently authenticated policy circuit before an issuer accepts it.
+//!
+//! This crate is an rlib; the browser build (wasm-bindgen cdylib) is the `cwlt-wasm` wrapper crate in `wasm/`.
 #![forbid(unsafe_code)]
 pub use cwlt_engine::plan as witness;
 
