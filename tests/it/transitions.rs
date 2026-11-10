@@ -4,6 +4,11 @@ use cwlt::witness::{
 };
 
 fn params() -> StandingParams {
+    // The voucher fields are copied, not taken through the engine's `From<&VoucherParams>`:
+    // the test's `czkp` and the engine's can be two source entries of the same crate (one per
+    // forge spelling of the URL), and then the impl belongs to the other instance. The values
+    // are the reference community's, exactly as before.
+    let voucher = czkp::reference::params().voucher;
     StandingParams {
         c0: 3,
         h_a: 14,
@@ -22,7 +27,16 @@ fn params() -> StandingParams {
         mid_q: 49_152,
         kappa_q: 131_072,
         loan_use_q: 16_384,
-        voucher: VoucherParamsIn::from(&czkp::reference::params().voucher),
+        voucher: VoucherParamsIn {
+            slope_q: voucher.slope_q,
+            min: voucher.min,
+            max: voucher.max,
+            days: voucher.days,
+            k: voucher.k,
+            max_punished: voucher.max_punished,
+            brake_cap: voucher.brake_cap,
+            reward_cap: voucher.reward_cap,
+        },
     }
 }
 
