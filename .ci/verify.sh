@@ -10,7 +10,6 @@ export GITHUB_PATH="${GITHUB_PATH:-$RUNNER_TEMP/github_path}"
 touch "$GITHUB_PATH"
 
 python3 .github/check-first-party.py --manifest-only
-bash .ci/update-our-crates.sh
 cargo metadata --locked --all-features --format-version 1 > dependency-metadata.json
 python3 .github/check-first-party.py --metadata dependency-metadata.json
 python3 -B .github/test-engine-identity.py
