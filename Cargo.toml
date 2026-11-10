@@ -9,7 +9,7 @@ edition = "2024"
 rust-version = "1.95"
 description = "Wallet: the general client-side holder that keeps openings and creates proofs"
 license = "LGPL-3.0-only WITH LGPL-3.0-linking-exception"
-repository = "https://git.corbet.ch/corbet-foss/cwlt.git"
+repository = "https://git.corbet.ch/corbet-libre/cwlt.git"
 readme = "README.md"
 publish = false
 include = ["Cargo.toml", "src/**", "README.md", "LICENSE", "LICENSE.md", "LICENSES/LGPL-3.0-only.txt", "LICENSES/LGPL-3.0-linking-exception.txt", "LICENSES/GPL-3.0-only.txt"]
@@ -32,11 +32,11 @@ schema = ["wave", "dep:utoipa", "dep:schemars", "czkp/schema"]
 
 [dependencies]
 # Same git source as ckmg's engine (one selected package): .github/engine_identity.py proves its bytes equal engine/ and forbids a path edge.
-cwlt-engine = { git = "https://git.corbet.ch/corbet-foss/cwlt.git", branch = "main" }
+cwlt-engine = { git = "https://git.corbet.ch/corbet-libre/cwlt.git", branch = "main" }
 ckmg = { git = "https://git.corbet.ch/corbet-libre/ckmg.git", branch = "main", default-features = false, features = ["wallet-engine"], optional = true }
-cwst = { git = "https://git.corbet.ch/corbet-foss/cwst.git", branch = "main", optional = true }
+cwst = { git = "https://git.corbet.ch/corbet-libre/cwst.git", branch = "main", optional = true }
 cbcn = { git = "https://git.corbet.ch/corbet-libre/cbcn.git", branch = "main", optional = true }
-czkp = { git = "https://git.corbet.ch/corbet-foss/czkp.git", branch = "main" }
+czkp = { git = "https://git.corbet.ch/corbet-libre/czkp.git", branch = "main" }
 blake3 = { version = "1.8", optional = true }
 utoipa = { version = "6", optional = true }
 schemars = { version = "1", optional = true }
@@ -45,7 +45,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-cvfy = { git = "https://git.corbet.ch/corbet-foss/cvfy.git", branch = "main", optional = true }
+cvfy = { git = "https://git.corbet.ch/corbet-libre/cvfy.git", branch = "main", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
@@ -59,9 +59,8 @@ wasm-bindgen-test = "0.3"
 tempfile = "3"
 
 [dev-dependencies]
-czkp = { git = "https://git.corbet.ch/corbet-foss/czkp.git", branch = "main", features = ["reference"] }
+czkp = { git = "https://git.corbet.ch/corbet-libre/czkp.git", branch = "main", features = ["reference"] }
 ed25519-dalek = "3.0"
 futures = { version = "0.3", features = ["executor"] }
 p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }
 csgn = { git = "https://git.corbet.ch/corbet-libre/csgn.git", branch = "main", default-features = false, features = ["volatile-signer"] }
-

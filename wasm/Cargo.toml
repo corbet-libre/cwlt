@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.95"
 description = "Wallet: the general client-side holder that keeps openings and creates proofs"
 license = "LGPL-3.0-only WITH LGPL-3.0-linking-exception"
-repository = "https://git.corbet.ch/corbet-foss/cwlt"
+repository = "https://git.corbet.ch/corbet-libre/cwlt.git"
 readme = "../README.md"
 publish = false
 

@@ -67,6 +67,7 @@ ctrn
 cvch
 cvfy
 cvld
+cvld-client
 cvlk
 cvln
 cvlt
