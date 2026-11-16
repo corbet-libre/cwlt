@@ -4,7 +4,7 @@ import subprocess
 import tomllib
 from pathlib import Path
 
-ENGINE_SOURCE = 'git+https://git.corbet.ch/corbet-libre/cwlt?branch=main#'
+ENGINE_SOURCE = 'git+https://git.corbet.ch/corbet-libre/cwlt.git?branch=main#'
 KEYS_SOURCE = 'git+https://git.corbet.ch/corbet-libre/ckmg.git?branch=main#'
 ENGINE_VERSION = '0.0.0'
 SHA = re.compile(r'^[0-9a-f]{40}$')

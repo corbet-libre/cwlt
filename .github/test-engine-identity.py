@@ -88,7 +88,7 @@ class EngineIdentityTests(unittest.TestCase):
                 extra = dict(selected, id='third')
                 metadata['packages'].append(extra)
             elif case == 1:
-                selected['source'] = selected['source'].replace('/cwlt?', '/cwlt.git?')
+                selected['source'] = selected['source'].replace('/cwlt.git?', '/cwlt?')
             elif case == 2:
                 selected['source'] = selected['source'].replace('branch=main', 'branch=v01')
             elif case == 3:
