@@ -43,7 +43,7 @@ data-encoding = { version = "2.9", optional = true }
 noirc_artifacts = { git = "https://github.com/noir-lang/noir", tag = "v1.0.0-beta.26", optional = true }
 nargo = { git = "https://github.com/noir-lang/noir", tag = "v1.0.0-beta.26", default-features = false, optional = true }
 bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", tag = "v1.0.0-beta.26", optional = true }
-barretenberg-rs = { version = "5.2.1", default-features = false, features = ["ffi"], optional = true }
+barretenberg-rs = { version = "=5.2.1", default-features = false, features = ["ffi"], optional = true }
 rlimit = { version = "0.11", optional = true }
 flate2 = { version = "1", optional = true }
 
