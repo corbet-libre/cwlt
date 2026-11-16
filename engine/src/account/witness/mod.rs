@@ -29,7 +29,7 @@ mod roster;
 mod sealed;
 mod statement;
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 pub use builders::{Acknowledgment, Delivered, Reserve, Resolution};
 pub use contact::verify_prehash;

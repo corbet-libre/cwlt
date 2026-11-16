@@ -20,9 +20,12 @@ fn block_on<F: Future>(future: F) -> F::Output {
 }
 
 fn read(name: &str) -> Vec<u8> {
+    read_in("CWLT_NATIVE_PROVER_FIXTURE", name)
+}
+
+fn read_in(variable: &str, name: &str) -> Vec<u8> {
     let directory = PathBuf::from(
-        std::env::var_os("CWLT_NATIVE_PROVER_FIXTURE")
-            .expect("genuine original retained extension artifact prerequisite"),
+        std::env::var_os(variable).expect("genuine original retained artifact prerequisite"),
     );
     assert!(directory.is_absolute());
     std::fs::read(directory.join(name)).expect("original retained prover fixture")
@@ -514,4 +517,85 @@ mod real {
         wrong.extension.standing = [9; 32];
         assert!(block_on(prove_activation_browser(&browser, wrong)).is_err());
     }
+}
+
+/// The `update` member comes from the retained activation artifacts, `wave` and `outcome` from the
+/// retained wave release (`CWLT_WAVE_PROVER_FIXTURE`).
+fn prover_of(program: Program, worker: &Arc<Fake>) -> BrowserProver {
+    let mut c = config();
+    if program != Program::Update {
+        c.circuit = read_in("CWLT_WAVE_PROVER_FIXTURE", "circuits.json");
+        c.verification_key = read_in("CWLT_WAVE_PROVER_FIXTURE", "keys.json");
+        c.scope = ProofScope {
+            circuit_digest: sha(&c.circuit).unwrap(),
+            verifying_key_digest: sha(&c.verification_key).unwrap(),
+        };
+    }
+    c.program = program;
+    BrowserProver::new(c, worker.clone()).unwrap()
+}
+
+/// A worker that answers a proof for exactly the public inputs the engine derives from `json`.
+fn answering(prover: &BrowserProver, json: &str, proof: &[u8]) -> Arc<Fake> {
+    let public = prover.public_inputs(json).unwrap();
+    Fake::new(Ok(reply(true, &public, proof)))
+}
+
+#[test]
+fn an_update_and_the_wave_and_outcome_evidence_prove_only_under_their_own_member() {
+    use crate::account::Sample;
+    let proof = [7u8; 64];
+    let (mut updates, mut waves, mut outcomes) = (0, 0, 0);
+    crate::account::replay(&mut |op, sample| match sample {
+        Sample::Update(input) => {
+            updates += 1;
+            let json = input.to_json().unwrap();
+            let probe = prover_of(Program::Update, &Fake::new(Err(Error::Crypto)));
+            assert_eq!(probe.program(), Program::Update);
+            let worker = answering(&probe, &json, &proof);
+            let prover = prover_of(Program::Update, &worker);
+            assert_eq!(block_on(prover.prove_update(input)).unwrap(), proof);
+            assert_eq!(worker.seen.lock().unwrap()[0].1, json.as_str());
+            // Another member never receives an update input.
+            for other in [Program::Wave, Program::Outcome] {
+                let worker = Fake::new(Err(Error::Crypto));
+                let prover = prover_of(other, &worker);
+                assert!(matches!(
+                    block_on(prover.prove_update(input)),
+                    Err(Error::Invalid)
+                ));
+                assert!(worker.seen.lock().unwrap().is_empty());
+            }
+        }
+        Sample::Evidence(evidence) if op == "wave" || op == "outcome" => {
+            let (own, other) = if evidence.is_outcome() {
+                outcomes += 1;
+                (Program::Outcome, Program::Wave)
+            } else {
+                waves += 1;
+                (Program::Wave, Program::Outcome)
+            };
+            let json = evidence.input_json().unwrap();
+            let probe = prover_of(own, &Fake::new(Err(Error::Crypto)));
+            let worker = answering(&probe, &json, &proof);
+            let prover = prover_of(own, &worker);
+            assert_eq!(
+                block_on(prover.prove_wave_evidence(evidence)).unwrap(),
+                proof
+            );
+            assert_eq!(worker.seen.lock().unwrap()[0].1, json.as_str());
+            // The other evidence member and the update member refuse it before the worker.
+            for wrong in [other, Program::Update] {
+                let worker = Fake::new(Err(Error::Crypto));
+                let prover = prover_of(wrong, &worker);
+                assert!(matches!(
+                    block_on(prover.prove_wave_evidence(evidence)),
+                    Err(Error::Invalid)
+                ));
+                assert!(worker.seen.lock().unwrap().is_empty());
+            }
+        }
+        Sample::Evidence(_) => {}
+    });
+    assert!(updates > 0 && waves > 0 && outcomes > 0);
 }

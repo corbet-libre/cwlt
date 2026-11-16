@@ -148,8 +148,19 @@ fn same(label: &str, got: &impl serde::Serialize, want: &Value) {
     }
 }
 
+/// What `replay` hands to its visitor: a built update input or built evidence, borrowed.
+pub(crate) enum Sample<'a> {
+    Update(&'a UpdateInput),
+    Evidence(&'a Evidence),
+}
+
 #[test]
 fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
+    replay(&mut |_, _| {});
+}
+
+/// Replays the golden scenario; `visit` sees every built update input and evidence with its op.
+pub(crate) fn replay(visit: &mut dyn FnMut(&str, Sample<'_>)) {
     let doc: Value = serde_json::from_slice(&std::fs::read(GOLDEN).unwrap()).unwrap();
     let bless = std::env::var_os("CWLT_WITNESS_BLESS").is_some();
     let mut blessed = doc.clone();
@@ -375,6 +386,7 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                             "step {n} {op}: Rust accepted what TypeScript refused"
                         );
                         built += 1;
+                        visit(op, Sample::Evidence(&e));
                         check(
                             bless,
                             &mut out["statement"],
@@ -431,6 +443,7 @@ fn rust_builders_reproduce_the_typescript_builders_byte_for_byte() {
                     step["ok"].as_bool().unwrap(),
                     "step {n} {op}: Rust accepted what TypeScript refused"
                 );
+                visit(op, Sample::Update(&c.input));
                 let input: Value = serde_json::from_str(&c.input.to_json().unwrap()).unwrap();
                 check(
                     bless,

@@ -10,6 +10,8 @@ mod prepared;
 mod witness;
 #[cfg(feature = "driver")]
 pub use witness::driver;
+#[cfg(test)]
+pub(crate) use witness::tests::{Sample, replay};
 
 #[cfg(all(feature = "native-prover", not(target_arch = "wasm32")))]
 pub use activation::prove_activation;
