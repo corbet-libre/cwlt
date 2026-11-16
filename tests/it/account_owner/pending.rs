@@ -144,6 +144,7 @@ fn response(
         },
         certificate: certificate.normalize_s().to_bytes().into(),
         ancestry: None,
+        join: None,
     }
 }
 
