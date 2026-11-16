@@ -35,6 +35,9 @@ export RUSTC="$NIGHTLY_RUSTC"
 export CARGO="$NIGHTLY_CARGO"
 export PATH="$NIGHTLY_BIN:$PATH"
 export RUSTUP_TOOLCHAIN=nightly
+# The coverage run executes the same native-prover tests as the test phase above, so it needs the same worker.
+CWLT_NATIVE_PROVER_WORKER="$(python3 -B .ci/native-prover-worker-path.py)"
+export CWLT_NATIVE_PROVER_WORKER
 "$NIGHTLY_CARGO" llvm-cov --version
 # Bug 2 isolation: coverage data must not reuse the shared cargo target
 # across jobs (stale checkout paths fail the next gate); scope the
