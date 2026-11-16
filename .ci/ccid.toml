@@ -60,4 +60,4 @@ dependencies = "cargo-deny"
 # (ccid coverage run, the `source` gate). No exclusions are approved.
 [coverage]
 llvm_cov = ["--workspace", "--all-features", "--branch", "--no-cfg-coverage", "--no-cfg-coverage-nightly", "--ignore-filename-regex", '/tests/']
-report = ["--workspace", "--branch", "--ignore-filename-regex", '/tests/']
+report = ["--branch", "--ignore-filename-regex", '/tests/']
