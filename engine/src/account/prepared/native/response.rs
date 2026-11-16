@@ -254,6 +254,10 @@ pub(super) fn verify_issuer_material(
 /// One ancestry certificate under one published epoch descriptor: the exact
 /// epoch and root, the issuer's signature over the certified commitment, and the
 /// join-time record leaf under that epoch's record-issuer key.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one ancestry certificate is checked against eight distinct inputs; rustc 1.100 clippy"
+)]
 fn check_ancestry_under(
     public: &GenesisPublic,
     scope: &czkp::ProofScope,
