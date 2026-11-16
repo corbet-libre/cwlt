@@ -30,7 +30,7 @@ independently constrained by Noir. JSON Plan contains only primitive integers
 and booleans, so encoding through serde_json::Value is total. No production
 code is excluded from the report.
 
-The source gate cross-checks raw JSON counters, LCOV locations and LLVM's
+The source gate (`ccid coverage run`, configured by the [coverage] table of .ci/ccid.toml) cross-checks raw JSON counters, LCOV locations and LLVM's
 annotated source inventory from the same execution. Every emitted source line
 and branch must be covered, with no exclusions; raw instantiated counters remain
 retained. A missing file, line, branch, ambiguous single-file report or inconsistent

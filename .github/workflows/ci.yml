@@ -138,10 +138,6 @@ jobs:
       run: |
         cargo llvm-cov report --branch --ignore-filename-regex '/tests/' --lcov --output-path coverage.lcov
         cargo llvm-cov report --branch --ignore-filename-regex '/tests/' --text --output-path coverage.txt
-    - name: Require complete source line and branch coverage
-      run: |
-        python3 .github/test-source-coverage.py
-        python3 .github/check-source-coverage.py coverage.lcov coverage.json coverage.txt
     - uses: actions/upload-artifact@v7
       if: always()
       with:
