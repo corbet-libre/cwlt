@@ -58,6 +58,7 @@ dependencies = "cargo-deny"
 
 # The one coverage gate: 100% of emitted production lines and branches from one instrumented execution
 # (ccid coverage run, the `source` gate). No exclusions are approved.
+# `cargo llvm-cov report` takes no --workspace, so the report names the members.
 [coverage]
 llvm_cov = ["--workspace", "--all-features", "--branch", "--no-cfg-coverage", "--no-cfg-coverage-nightly", "--ignore-filename-regex", '/tests/']
-report = ["--branch", "--ignore-filename-regex", '/tests/']
+report = ["--package", "cwlt", "--package", "cwlt-engine", "--package", "cwlt-wasm", "--branch", "--ignore-filename-regex", '/tests/']

@@ -1,8 +1,5 @@
 [workspace]
 members = ["engine", "wasm"]
-# Workspace-wide by default: `cargo llvm-cov report` takes no --workspace and selects the default members, so without
-# this the LCOV export lacks the engine and wasm members that the instrumented run (--workspace) covers.
-default-members = [".", "engine", "wasm"]
 resolver = "3"
 
 [package]
